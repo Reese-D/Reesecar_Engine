@@ -12,7 +12,9 @@
 #include "validation.cpp"
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
-
+const std::vector<const char*> validationLayers = {
+    "VK_LAYER_KHRONOS_validation"
+};
 class HelloTriangleApplication {
 public:
     void run()
@@ -20,9 +22,11 @@ public:
         auto window = initWindow();
         //printAvailableExtensions();
         auto instance = initVulkan();
-        auto debugMessengers = validation::setupDebugMessengers(instance);
+        validation* myValidation = new validation{instance, validationLayers};
         mainLoop(window);
-        cleanup(window, instance, debugMessengers);
+
+        delete myValidation; //has to die before instance, unfortunately. So we must call this manually
+        cleanup(window, instance);
     }
 
 private:
@@ -76,12 +80,12 @@ private:
 
         auto validationCreateDestroy = validation::getDebugMessengers()[validation::DEBUG_MESSENGER_INDEX_CREATE_DESTROY];
                         
-        if (enableValidationLayers && !validation::checkValidationLayerSupport()) {
+        if (enableValidationLayers && !validation::checkValidationLayerSupport(validationLayers)) {
             throw std::runtime_error("validation layers requested, but not available!");
         } else {
             if (enableValidationLayers) {
-                createInfo.enabledLayerCount = static_cast<uint32_t>(validation::validationLayers.size());
-                createInfo.ppEnabledLayerNames = validation::validationLayers.data();
+                createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+                createInfo.ppEnabledLayerNames = validationLayers.data();
                 createInfo.pNext = &validationCreateDestroy;
             } else {
                 createInfo.enabledLayerCount = 0;
@@ -107,14 +111,8 @@ private:
         }
     }
 
-    void cleanup(GLFWwindow* window, VkInstance* instance, std::vector<VkDebugUtilsMessengerEXT> debugMessengers)
-    {
-        if (enableValidationLayers) {
-            for(auto debugMessenger : debugMessengers){
-                validation::DestroyDebugUtilsMessengerEXT(*instance, debugMessenger, nullptr);
-            }
-        }
-        
+    void cleanup(GLFWwindow* window, VkInstance* instance)
+    {        
         vkDestroyInstance(*instance, nullptr);
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -158,3 +156,5 @@ int main() {
 
     return EXIT_SUCCESS;
 }
+
+
