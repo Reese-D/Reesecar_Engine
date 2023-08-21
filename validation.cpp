@@ -52,7 +52,6 @@ VkDebugUtilsMessengerCreateInfoEXT validation::createErrorDebug( VkStructureType
     return createError;
 }
 
-
 const std::vector<VkDebugUtilsMessengerCreateInfoEXT> validation::getDebugMessengers() noexcept
 {
     std::vector<VkDebugUtilsMessengerCreateInfoEXT> debugMessengers{};
@@ -75,7 +74,6 @@ VkResult validation::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkD
         return VK_ERROR_EXTENSION_NOT_PRESENT;
     }
 }
-
 
 std::vector<VkDebugUtilsMessengerEXT> validation::setupDebugMessengers(VkInstance* instance)
 {
@@ -148,4 +146,3 @@ validation::validation(VkInstance* instance, const std::vector<const char*> vali
         debugMessengers_ = setupDebugMessengers(instance);
     }
 }
-

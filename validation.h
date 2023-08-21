@@ -1,3 +1,4 @@
+#pragma once
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -56,4 +57,3 @@ class validation
     const std::vector<const char*> validationLayers_;
     std::vector<VkDebugUtilsMessengerEXT> debugMessengers_;
 };
-
