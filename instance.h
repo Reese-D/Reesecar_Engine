@@ -16,7 +16,8 @@ class instance
     VkInstance* initVulkan();
     VkInstance* createInstance(const std::vector<const char*> validationLayers);
     std::vector<const char*> getRequiredExtensions();
-    
+    void pickPhysicalDevice(VkInstance* instance);
+    bool isDeviceSuitable(VkPhysicalDevice device);
     VkInstance* instance_;
     validation* validation_;
 };
