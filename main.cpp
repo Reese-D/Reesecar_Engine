@@ -1,4 +1,5 @@
 //this will include vulkan/vulkan.h through GLFW
+#include <memory>
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -26,30 +27,29 @@ public:
         //printAvailableExtensions();
         auto myInstance = instance{validationLayers};
         mainLoop(window);
-        cleanup(window);
+        cleanup();
     }
 
 private:
-    void mainLoop(GLFWwindow* window)
+    void mainLoop(std::shared_ptr<GLFWwindow> window)
     {
-        while (!glfwWindowShouldClose(window)) {
+        while (!glfwWindowShouldClose(window.get())) {
             glfwPollEvents();
         }
     }
 
-    void cleanup(GLFWwindow* window)
+    void cleanup()
     {        
-        glfwDestroyWindow(window);
         glfwTerminate();
     }
 
-    GLFWwindow* initWindow()
+    std::shared_ptr<GLFWwindow> initWindow()
     {
         glfwInit();
         
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); //disable resizing for now, takes more complexity to handle it
-        GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+        std::shared_ptr<GLFWwindow> window(glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr), &glfwDestroyWindow);
         
         return window;
     }

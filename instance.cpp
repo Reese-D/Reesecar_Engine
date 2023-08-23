@@ -1,23 +1,23 @@
 #include "instance.h"
 #include "device.h"
+#include <chrono>
+#include <memory>
 #include <stdexcept>
 #include <iostream>
+#include <thread>
 
 instance::instance(const std::vector<const char*> validationLayers)
+    :instance_(createInstance(validationLayers))
 {
-    instance_ = createInstance(validationLayers);
     device::pickPhysicalDevice(instance_);
-    validation_  = new validation{instance_, validationLayers};
+    validation_ = std::make_unique<validation>(instance_, validationLayers);
 }
 
 instance::~instance()
 {
-    
-        delete validation_;
-        vkDestroyInstance(*instance_, nullptr);
 }
-        
-VkInstance* instance::createInstance(const std::vector<const char*> validationLayers)
+
+std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const char*> validationLayers)
 {
     VkApplicationInfo appInfo{};
     //most of these are optional
@@ -42,7 +42,7 @@ VkInstance* instance::createInstance(const std::vector<const char*> validationLa
     createInfo.ppEnabledExtensionNames = extensions.data();
     createInfo.enabledLayerCount = 0; //global validation layers to enable
 
-    auto validationCreateDestroy = validation::getDebugMessengers()[validation::DEBUG_MESSENGER_INDEX_CREATE_DESTROY];
+    auto validationCreateDestroy = validation::getDebugMessengers()[DEBUG_MESSENGER_INDEX_CREATE_DESTROY];
                         
     if (enableValidationLayers && !validation::checkValidationLayerSupport(validationLayers)) {
         throw std::runtime_error("validation layers requested, but not available!");
@@ -56,17 +56,17 @@ VkInstance* instance::createInstance(const std::vector<const char*> validationLa
             createInfo.pNext = nullptr;
         }
     }
-
-    VkInstance* instance = new VkInstance();
-    VkResult result = vkCreateInstance(&createInfo, nullptr, instance);
+    
+    auto instance = std::shared_ptr<VkInstance>(new VkInstance(), [](VkInstance* tes){vkDestroyInstance(*tes, nullptr);});
+    VkResult result = vkCreateInstance(&createInfo, nullptr, instance.get());
         
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create instance!");
     }
-        
-        
+    
     return instance;
 }
+
 std::vector<const char*> instance::getRequiredExtensions()
 {
     uint32_t glfwExtensionCount = 0;
@@ -82,8 +82,7 @@ std::vector<const char*> instance::getRequiredExtensions()
     return extensions;
 }
 
-
-VkInstance* instance::getInstance()
+std::shared_ptr<VkInstance> instance::getInstance()
 {
     return instance_;
 }

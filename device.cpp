@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include <iostream>
 
-void device::pickPhysicalDevice(VkInstance* instance) {
+void device::pickPhysicalDevice(std::shared_ptr<VkInstance> instance) {
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(*instance, &deviceCount, nullptr);

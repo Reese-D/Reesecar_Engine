@@ -75,7 +75,7 @@ VkResult validation::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkD
     }
 }
 
-std::vector<VkDebugUtilsMessengerEXT> validation::setupDebugMessengers(VkInstance* instance)
+std::vector<VkDebugUtilsMessengerEXT> validation::setupDebugMessengers(std::shared_ptr<VkInstance> instance)
 {
     std::vector<VkDebugUtilsMessengerEXT> result{};
     if (!enableValidationLayers) return result;
@@ -138,7 +138,7 @@ validation::~validation()
     }
 }
 
-validation::validation(VkInstance* instance, const std::vector<const char*> validationLayers)
+validation::validation(std::shared_ptr<VkInstance> instance, const std::vector<const char*> validationLayers)
     :initializedInstance_(instance)
     ,validationLayers_(validationLayers)
 {
