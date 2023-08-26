@@ -10,7 +10,8 @@ device::device(std::shared_ptr<VkInstance> instance)
     std::cout << "device constructor was called" << std::endl;
     physicalDevice_ = getPhysicalDevice(instance);
 
-    //we end up doing these twice but they're fast operations so we'll take the hit for cleaniness
+    //we end up doing these twice (see getPhysicalDevice)
+    //they're fast operations however, so we'll take the speed hit for cleaniness
     physicalDeviceFeatures_ = getDeviceFeatures(physicalDevice_);
     physicalDeviceProperties_ = getDeviceProperties(physicalDevice_);
     indices_ = queue::findQueueFamilies(physicalDevice_);

@@ -1,6 +1,7 @@
 //this will include vulkan/vulkan.h through GLFW
 #include <memory>
 #include <vulkan/vulkan_core.h>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -11,6 +12,7 @@
 #include <cstring>
 
 #include "instance.h"
+#include "surface.hpp"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -23,11 +25,14 @@ class HelloTriangleApplication {
 public:
     void run()
     {
-        auto window = initWindow();
+        std::shared_ptr<GLFWwindow> glfwWindow = initWindow();
+
         //printAvailableExtensions();
         auto myInstance = instance{validationLayers};
-        mainLoop(window);
-        cleanup();
+        VkInstance myVkInstance = *myInstance.getInstance();
+        auto surface = window::getSurface(myVkInstance, glfwWindow);
+        mainLoop(glfwWindow);
+        cleanup(surface, myVkInstance);
     }
 
 private:
@@ -38,8 +43,9 @@ private:
         }
     }
 
-    void cleanup()
-    {        
+    void cleanup(VkSurfaceKHR surface, VkInstance instance)
+    {
+        vkDestroySurfaceKHR(instance, surface, nullptr);
         glfwTerminate();
     }
 
