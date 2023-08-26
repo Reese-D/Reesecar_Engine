@@ -131,6 +131,7 @@ bool validation::checkValidationLayerSupport(std::vector<const char*> validation
 
 validation::~validation()
 {
+    std::cout << "validation destructor called" << std::endl;
     if (enableValidationLayers) {
         for(auto debugMessenger : debugMessengers_){
             DestroyDebugUtilsMessengerEXT(*initializedInstance_, debugMessenger, nullptr);
@@ -142,6 +143,7 @@ validation::validation(std::shared_ptr<VkInstance> instance, const std::vector<c
     :initializedInstance_(instance)
     ,validationLayers_(validationLayers)
 {
+    std::cout << "validation constructor called" << std::endl;
     if(enableValidationLayers){
         debugMessengers_ = setupDebugMessengers(instance);
     }

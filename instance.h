@@ -1,11 +1,14 @@
 #pragma once
-#include <memory>
+
 #include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+#include <vector>
+#include <memory>
 
 #include "validation.h"
-#include <vector>
+#include "device.h"
+
 class instance
 {
  public:
@@ -21,5 +24,6 @@ class instance
     bool isDeviceSuitable(VkPhysicalDevice device);
     std::shared_ptr<VkInstance> instance_;
     std::unique_ptr<validation> validation_;
+    std::unique_ptr<device> device_;
 };
 

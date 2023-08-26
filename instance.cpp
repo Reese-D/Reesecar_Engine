@@ -9,12 +9,14 @@
 instance::instance(const std::vector<const char*> validationLayers)
     :instance_(createInstance(validationLayers))
 {
-    device::pickPhysicalDevice(instance_);
+    std::cout << "instance constructor called" << std::endl;
+    device_ = std::make_unique<device>(instance_);
     validation_ = std::make_unique<validation>(instance_, validationLayers);
 }
 
 instance::~instance()
 {
+    std::cout << "instance destructor called" << std::endl;
 }
 
 std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const char*> validationLayers)
