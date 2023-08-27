@@ -13,6 +13,7 @@
 
 #include "instance.h"
 #include "surface.hpp"
+#include "device.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -27,12 +28,15 @@ public:
     {
         std::shared_ptr<GLFWwindow> glfwWindow = initWindow();
 
+
         //printAvailableExtensions();
         auto myInstance = instance{validationLayers};
-        VkInstance myVkInstance = *myInstance.getInstance();
-        auto surface = window::getSurface(myVkInstance, glfwWindow);
+        std::shared_ptr<VkInstance> myVkInstance = myInstance.getInstance();
+        auto surface = window::getSurface(*myVkInstance, glfwWindow);
+        auto myDevice = std::make_unique<device>(myVkInstance, surface);
+                
         mainLoop(glfwWindow);
-        cleanup(surface, myVkInstance);
+        cleanup(surface, *myVkInstance);
     }
 
 private:

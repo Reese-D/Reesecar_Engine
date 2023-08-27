@@ -1,5 +1,4 @@
 #include "instance.h"
-#include "device.h"
 #include <chrono>
 #include <memory>
 #include <stdexcept>
@@ -10,7 +9,6 @@ instance::instance(const std::vector<const char*> validationLayers)
     :instance_(createInstance(validationLayers))
 {
     std::cout << "instance constructor called" << std::endl;
-    device_ = std::make_unique<device>(instance_);
     validation_ = std::make_unique<validation>(instance_, validationLayers);
 }
 

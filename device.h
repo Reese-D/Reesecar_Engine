@@ -11,11 +11,10 @@ class device
 public:
     device() = delete;
     ~device();
-    device(std::shared_ptr<VkInstance> instance);
+    device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface);
     
 private:
-    static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance);
-    static VkPhysicalDevice getPhysicalDevice();
+    static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface);
     static VkPhysicalDeviceFeatures getDeviceFeatures(VkPhysicalDevice device);
     static VkPhysicalDeviceProperties getDeviceProperties(VkPhysicalDevice device);
     static VkDevice getLogicalDevice(VkPhysicalDevice physicalDevice
@@ -27,6 +26,7 @@ private:
                                  ,std::optional<uint32_t> indices);
     static VkQueue getDeviceQueue(VkDevice logicalDevice
                                   ,queue::QueueFamilyIndices indices);
+    static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
 
     VkDevice logicalDevice_;
     VkPhysicalDevice physicalDevice_;

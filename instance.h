@@ -24,6 +24,6 @@ class instance
     bool isDeviceSuitable(VkPhysicalDevice device);
     std::shared_ptr<VkInstance> instance_;
     std::unique_ptr<validation> validation_;
-    std::unique_ptr<device> device_;
+
 };
 

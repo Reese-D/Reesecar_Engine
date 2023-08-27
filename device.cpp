@@ -5,10 +5,10 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-device::device(std::shared_ptr<VkInstance> instance)
+device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface)
 {
     std::cout << "device constructor was called" << std::endl;
-    physicalDevice_ = getPhysicalDevice(instance);
+    physicalDevice_ = getPhysicalDevice(instance, surface);
 
     //we end up doing these twice (see getPhysicalDevice)
     //they're fast operations however, so we'll take the speed hit for cleaniness
@@ -35,7 +35,15 @@ VkQueue device::getDeviceQueue(VkDevice logicalDevice
     return graphicsQueue;
 }
 
-VkPhysicalDevice device::getPhysicalDevice(std::shared_ptr<VkInstance> instance)
+bool device::hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices)
+{
+    VkBool32 presentSupport = false;
+    vkGetPhysicalDeviceSurfaceSupportKHR(device, indices.value(), surface, &presentSupport);
+    return presentSupport;
+}
+
+
+VkPhysicalDevice device::getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface)
 {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(*instance, &deviceCount, nullptr);
@@ -50,7 +58,10 @@ VkPhysicalDevice device::getPhysicalDevice(std::shared_ptr<VkInstance> instance)
         auto physicalDeviceFeatures = getDeviceFeatures(device);
         auto physicalDeviceProperties = getDeviceProperties(device);
         auto indices = queue::findQueueFamilies(device);
-        if (auto result  = isDeviceSuitable(device, physicalDeviceProperties, physicalDeviceFeatures, indices)) {
+        bool supportForSurface = hasSupportForSurface(device, surface, indices);
+        bool deviceSuitable = isDeviceSuitable(device, physicalDeviceProperties, physicalDeviceFeatures, indices);
+        if (auto result = supportForSurface && deviceSuitable) {
+            std::cout << "here" << std::endl;
             physicalDevice = device;
             break;
         }
