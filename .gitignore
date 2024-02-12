@@ -10,3 +10,5 @@
 
 # build files
 VulkanTest
+*\.o
+*\.d

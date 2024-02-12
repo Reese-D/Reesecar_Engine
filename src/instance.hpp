@@ -6,8 +6,8 @@
 #include <vector>
 #include <memory>
 
-#include "validation.h"
-#include "device.h"
+#include "validation.hpp"
+#include "device.hpp"
 
 class instance
 {

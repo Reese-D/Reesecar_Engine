@@ -1,4 +1,4 @@
-#include "instance.h"
+#include "instance.hpp"
 #include <chrono>
 #include <memory>
 #include <stdexcept>
@@ -30,8 +30,6 @@ std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const cha
     appInfo.pNext = nullptr; // pNext is for extensions, usually null
 
     //glfw can give us the required extensions to be passed through
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
     auto extensions = getRequiredExtensions();
         
     //not optional, defines which global extensions and validation layers to use

@@ -11,9 +11,9 @@
 #include <vector>
 #include <cstring>
 
-#include "instance.h"
+#include "instance.hpp"
 #include "surface.hpp"
-#include "device.h"
+#include "device.hpp"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
