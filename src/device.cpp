@@ -22,6 +22,9 @@ device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int w
     presentQueue_ = getPresentDeviceQueue(logicalDevice_, indices_);
 
     swapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface, width, height);
+    auto format = swapchain_->getImageFormat();
+    
+    renderPass_ = new render_pass(logicalDevice_, format);
     graphicsPipeline_ = new graphics_pipeline(logicalDevice_);
 }
 
@@ -29,6 +32,7 @@ device::~device()
 {
     std::cout << "device destructor was called" << std::endl;
     delete swapchain_;
+    delete renderPass_;
     delete graphicsPipeline_;
     std::cout << "destroying logical device" << std::endl;
     vkDestroyDevice(logicalDevice_, nullptr);

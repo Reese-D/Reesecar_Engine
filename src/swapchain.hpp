@@ -11,6 +11,8 @@ public:
         std::vector<VkSurfaceFormatKHR> formats;
         std::vector<VkPresentModeKHR> presentModes;
     };
+
+    VkFormat getImageFormat();
 private:
     VkDevice device_;
     VkSwapchainKHR swapChain_;

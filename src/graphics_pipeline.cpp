@@ -11,6 +11,7 @@ graphics_pipeline::graphics_pipeline(VkDevice device)
 
 graphics_pipeline::~graphics_pipeline()
 {
+    std::cout << "graphics pipeline destructor called" << std::endl;
     vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
 }
 

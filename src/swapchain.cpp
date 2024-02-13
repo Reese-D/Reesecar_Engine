@@ -66,6 +66,11 @@ swapchain::swapchain(VkDevice device, VkPhysicalDevice physicalDevice, VkSurface
     createImageViews();
 }
 
+VkFormat swapchain::getImageFormat()
+{
+    return swapChainImageFormat_;
+}
+
 swapchain::~swapchain()
 {
     std::cout << "swapchain destructor called" << std::endl;

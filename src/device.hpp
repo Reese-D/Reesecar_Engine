@@ -8,6 +8,8 @@
 #include "queue.hpp"
 #include "swapchain.hpp"
 #include "graphics_pipeline.hpp"
+#include "render_pass.hpp"
+
 class device
 {
 public:
@@ -45,6 +47,7 @@ private:
     VkPhysicalDeviceFeatures physicalDeviceFeatures_;
     swapchain* swapchain_;
     graphics_pipeline* graphicsPipeline_;
+    render_pass* renderPass_;
     
     const std::vector<const char*> deviceExtensions_ = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME
