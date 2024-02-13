@@ -35,6 +35,9 @@ render_pass::render_pass(VkDevice device, VkFormat swapChainImageFormat)
             throw std::runtime_error("failed to create render pass!");
         }
 }
+VkRenderPass render_pass::getRenderPass(){
+    return renderPass_;
+}
 
 render_pass::~render_pass()
 {
