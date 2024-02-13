@@ -34,6 +34,7 @@ public:
         std::shared_ptr<VkInstance> myVkInstance = myInstance.getInstance();
         auto surface = window::getSurface(*myVkInstance, glfwWindow);
         auto myDevice = new device(myVkInstance, surface, WIDTH, HEIGHT);
+        
         mainLoop(glfwWindow);
         delete myDevice;
         cleanup(surface, *myVkInstance);

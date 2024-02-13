@@ -21,7 +21,17 @@ include $(OBJ:.o=.d)
 	./depend.sh 'irname $*.cpp' $(CFLAGS) $*.cpp > $@
 %.d: %.c
 	./depend_c.sh 'irname $*.c' $(CFLAGS) $*.c > $@
+
+shaders/frag.spv: shaders/frag.glsl
+	cd ./shaders; glslc -fshader-stage=fragment frag.glsl -o frag.spv
+
+shaders/vert.spv: shaders/vert.glsl
+	cd ./shaders; glslc -fshader-stage=vertex vert.glsl -o vert.spv
+
+all: main shaders/frag.spv shaders/vert.spv
+
 clean:
 	find ./ -iname "*.o" -exec rm {} \;
 	find ./ -iname "*.d" -exec rm {} \;
+	find ./ -iname "*.spv" -exec rm {} \;
 	rm main
