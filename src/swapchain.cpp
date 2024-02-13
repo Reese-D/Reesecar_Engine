@@ -55,6 +55,13 @@ swapchain::swapchain(VkDevice device, VkPhysicalDevice physicalDevice, VkSurface
     if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create swap chain!");
     }
+
+    vkGetSwapchainImagesKHR(device, swapChain_, &imageCount, nullptr);
+    swapChainImages_.resize(imageCount);
+    vkGetSwapchainImagesKHR(device, swapChain_, &imageCount, swapChainImages_.data());
+
+    swapChainImageFormat_ = surfaceFormat.format;
+    swapChainExtent_ = extent;
 }
 
 swapchain::~swapchain()
