@@ -6,35 +6,46 @@
 #include <optional>
 
 #include "queue.hpp"
+#include "swapchain.hpp"
 class device
 {
 public:
     device() = delete;
     ~device();
-    device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface);
-    
+    device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int width, int height);
+    static swapchain::SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface);
 private:
-    static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface);
+    static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, const std::vector<const char*> deviceExtensions);
     static VkPhysicalDeviceFeatures getDeviceFeatures(VkPhysicalDevice device);
     static VkPhysicalDeviceProperties getDeviceProperties(VkPhysicalDevice device);
     static VkDevice getLogicalDevice(VkPhysicalDevice physicalDevice
                                      ,VkPhysicalDeviceFeatures deviceFeatures
-                                     ,queue::QueueFamilyIndices indices);
+                                     ,queue::QueueFamilyIndices indices
+                                     ,std::vector<const char*> deviceExtensions);
     static bool isDeviceSuitable(VkPhysicalDevice physicalDevice
                                  ,VkPhysicalDeviceProperties deviceProperties
                                  ,VkPhysicalDeviceFeatures deviceFeatures
-                                 ,std::optional<uint32_t> indices);
-    static VkQueue getDeviceQueue(VkDevice logicalDevice
+                                 ,queue::QueueFamilyIndices indices
+                                 ,VkSurfaceKHR surface);
+    static VkQueue getGraphicsDeviceQueue(VkDevice logicalDevice
+                                  ,queue::QueueFamilyIndices indices);
+    static VkQueue getPresentDeviceQueue(VkDevice logicalDevice
                                   ,queue::QueueFamilyIndices indices);
     static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
+    static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions);
 
+    
     VkDevice logicalDevice_;
     VkPhysicalDevice physicalDevice_;
     VkQueue graphicsQueue_;
+    VkQueue presentQueue_;
     queue::QueueFamilyIndices indices_;
     VkPhysicalDeviceProperties physicalDeviceProperties_;
     VkPhysicalDeviceFeatures physicalDeviceFeatures_;
-    
+    swapchain* swapchain_;
+    const std::vector<const char*> deviceExtensions_ = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
 };
 
 

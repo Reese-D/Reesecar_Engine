@@ -33,9 +33,9 @@ public:
         auto myInstance = instance{validationLayers};
         std::shared_ptr<VkInstance> myVkInstance = myInstance.getInstance();
         auto surface = window::getSurface(*myVkInstance, glfwWindow);
-        auto myDevice = std::make_unique<device>(myVkInstance, surface);
-                
+        auto myDevice = new device(myVkInstance, surface, WIDTH, HEIGHT);
         mainLoop(glfwWindow);
+        delete myDevice;
         cleanup(surface, *myVkInstance);
     }
 

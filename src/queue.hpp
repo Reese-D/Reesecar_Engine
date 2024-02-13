@@ -1,3 +1,4 @@
+#pragma once
 #include <cstdint>
 #include <optional>
 #include <memory>
@@ -9,8 +10,15 @@ public:
     //struct QueueFamilyIndices {
     //std::optional<uint32_t> graphicsFamily;
     //};
-    using QueueFamilyIndices =  std::optional<uint32_t>;
-    static QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkQueueFlags desiredFlags = VK_QUEUE_GRAPHICS_BIT);
+    struct QueueFamilyIndices {
+        std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
+
+        bool isComplete() {
+            return graphicsFamily.has_value() && presentFamily.has_value();
+        }
+    };
+    static QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
 };
 
 
