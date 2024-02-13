@@ -9,6 +9,9 @@ LIBS := -L/usr/local/lib/ -lm -lvulkan -lglfw
 SRC :=
 # include the description for each module
 include $(patsubst %,%/module.mk,$(MODULES))
+
+all: main shaders/frag.spv shaders/vert.spv
+
 # determine the object files
 OBJ := $(patsubst %.cpp,%.o, $(filter %.cpp,$(SRC))) $(patsubst %.c,%.o, $(filter %.c,$(SRC)))
 # link the program
@@ -27,8 +30,6 @@ shaders/frag.spv: shaders/frag.glsl
 
 shaders/vert.spv: shaders/vert.glsl
 	cd ./shaders; glslc -fshader-stage=vertex vert.glsl -o vert.spv
-
-all: main shaders/frag.spv shaders/vert.spv
 
 clean:
 	find ./ -iname "*.o" -exec rm {} \;
