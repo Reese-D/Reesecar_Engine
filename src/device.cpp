@@ -25,6 +25,7 @@ device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int w
     auto format = swapchain_->getImageFormat();
     
     graphicsPipeline_ = new graphics_pipeline(logicalDevice_, format);
+    swapchain_->createFrameBuffers(graphicsPipeline_->getRenderPass());
 }
 
 device::~device()

@@ -9,6 +9,7 @@ class graphics_pipeline
 public:
     graphics_pipeline(VkDevice device, VkFormat format);
     ~graphics_pipeline();
+    VkRenderPass getRenderPass();
 private:
     VkPipelineLayout pipelineLayout_;
     VkDevice device_;

@@ -13,6 +13,7 @@ public:
     };
 
     VkFormat getImageFormat();
+    void createFrameBuffers(VkRenderPass renderPass);
 private:
     VkDevice device_;
     VkSwapchainKHR swapChain_;
@@ -20,10 +21,10 @@ private:
     VkFormat swapChainImageFormat_;
     VkExtent2D swapChainExtent_;
     std::vector<VkImageView> swapChainImageViews_;
+    std::vector<VkFramebuffer> swapChainFramebuffers_;
 
     void createImageViews();
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, int width, int height);
-
 };

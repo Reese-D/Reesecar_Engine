@@ -18,6 +18,11 @@ graphics_pipeline::~graphics_pipeline()
     delete pCustomRenderPass_;
 }
 
+VkRenderPass graphics_pipeline::getRenderPass()
+{
+    return pCustomRenderPass_->getRenderPass();
+}
+
 void graphics_pipeline::createGraphicsPipeline() {
     
     auto vertShaderCode = readFile("shaders/vert.spv");

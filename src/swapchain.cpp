@@ -71,12 +71,42 @@ VkFormat swapchain::getImageFormat()
     return swapChainImageFormat_;
 }
 
+void swapchain::createFrameBuffers(VkRenderPass renderPass)
+{
+    swapChainFramebuffers_.resize(swapChainImageViews_.size());
+    
+    for (size_t i = 0; i < swapChainImageViews_.size(); i++) {
+    VkImageView attachments[] = {
+        swapChainImageViews_[i]
+    };
+
+    VkFramebufferCreateInfo framebufferInfo{};
+    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    framebufferInfo.renderPass = renderPass;
+    framebufferInfo.attachmentCount = 1;
+    framebufferInfo.pAttachments = attachments;
+    framebufferInfo.width = swapChainExtent_.width;
+    framebufferInfo.height = swapChainExtent_.height;
+    framebufferInfo.layers = 1;
+
+    if (vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &swapChainFramebuffers_[i]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create framebuffer!");
+    }
+}
+}
+
 swapchain::~swapchain()
 {
     std::cout << "swapchain destructor called" << std::endl;
+    std::cout << "Destroying swapchain framebuffers" << std::endl;
+    for (auto framebuffer : swapChainFramebuffers_) {
+        vkDestroyFramebuffer(device_, framebuffer, nullptr);
+    }
+    std::cout << "Destroying swapchain image views" << std::endl;
     for (auto imageView : swapChainImageViews_) {
         vkDestroyImageView(device_, imageView, nullptr);
     }
+    std::cout << "Destroying swapchain" << std::endl;
     vkDestroySwapchainKHR(device_, swapChain_, nullptr);
 }
 
