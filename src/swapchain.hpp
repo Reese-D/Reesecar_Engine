@@ -14,6 +14,8 @@ public:
 
     VkFormat getImageFormat();
     void createFrameBuffers(VkRenderPass renderPass);
+    VkExtent2D getSwapChainExtent();
+    std::vector<VkFramebuffer> getSwapChainFramebuffers();
 private:
     VkDevice device_;
     VkSwapchainKHR swapChain_;

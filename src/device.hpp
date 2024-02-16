@@ -36,7 +36,14 @@ private:
     static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
     static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions);
     void createCommandPool(VkSurfaceKHR surface);
-
+    VkCommandBuffer createCommandBuffer();
+    void recordCommandBuffer(VkCommandBuffer commandBuffer
+                             ,uint32_t imageIndex
+                             ,VkRenderPass renderPass
+                             ,VkExtent2D swapChainExtent
+                             ,VkPipeline graphicsPipeline
+                             ,std::vector<VkFramebuffer> swapChainFramebuffers);
+    
     VkCommandPool commandPool_;
     VkDevice logicalDevice_;
     VkPhysicalDevice physicalDevice_;

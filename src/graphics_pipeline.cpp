@@ -17,7 +17,10 @@ graphics_pipeline::~graphics_pipeline()
     vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     delete pCustomRenderPass_;
 }
-
+VkPipeline graphics_pipeline::getGraphicsPipeline()
+{
+    return graphicsPipeline_;
+}
 VkRenderPass graphics_pipeline::getRenderPass()
 {
     return pCustomRenderPass_->getRenderPass();

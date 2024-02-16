@@ -10,6 +10,7 @@ public:
     graphics_pipeline(VkDevice device, VkFormat format);
     ~graphics_pipeline();
     VkRenderPass getRenderPass();
+    VkPipeline getGraphicsPipeline();
 private:
     VkPipelineLayout pipelineLayout_;
     VkDevice device_;

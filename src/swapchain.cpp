@@ -66,6 +66,15 @@ swapchain::swapchain(VkDevice device, VkPhysicalDevice physicalDevice, VkSurface
     createImageViews();
 }
 
+std::vector<VkFramebuffer> swapchain::getSwapChainFramebuffers()
+{
+    return swapChainFramebuffers_;
+}
+
+VkExtent2D swapchain::getSwapChainExtent()
+{
+    return swapChainExtent_;
+}
 VkFormat swapchain::getImageFormat()
 {
     return swapChainImageFormat_;
