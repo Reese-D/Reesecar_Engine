@@ -26,6 +26,7 @@ device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int w
     
     graphicsPipeline_ = new graphics_pipeline(logicalDevice_, format);
     swapchain_->createFrameBuffers(graphicsPipeline_->getRenderPass());
+    createCommandPool(surface);
 }
 
 device::~device()
@@ -33,11 +34,26 @@ device::~device()
     std::cout << "device destructor was called" << std::endl;
     delete swapchain_;
     delete graphicsPipeline_;
-
+    std::cout << "destroying command pool" << std::endl;
+    vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
     std::cout << "destroying logical device" << std::endl;
     vkDestroyDevice(logicalDevice_, nullptr);
-
 }
+
+void device::createCommandPool(VkSurfaceKHR surface)
+{
+    queue::QueueFamilyIndices queueFamilyIndices = queue::findQueueFamilies(physicalDevice_, surface);
+ 
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+
+    if (vkCreateCommandPool(logicalDevice_, &poolInfo, nullptr, &commandPool_) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create command pool!");
+    }
+}
+
 
 VkQueue device::getGraphicsDeviceQueue(VkDevice logicalDevice
                                , queue::QueueFamilyIndices indices)

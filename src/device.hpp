@@ -35,8 +35,9 @@ private:
                                   ,queue::QueueFamilyIndices indices);
     static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
     static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions);
+    void createCommandPool(VkSurfaceKHR surface);
 
-    
+    VkCommandPool commandPool_;
     VkDevice logicalDevice_;
     VkPhysicalDevice physicalDevice_;
     VkQueue graphicsQueue_;
