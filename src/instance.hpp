@@ -7,7 +7,6 @@
 #include <memory>
 
 #include "validation.hpp"
-#include "device.hpp"
 
 class instance
 {
