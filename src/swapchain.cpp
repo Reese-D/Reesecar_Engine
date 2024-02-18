@@ -71,6 +71,11 @@ std::vector<VkFramebuffer> swapchain::getSwapChainFramebuffers()
     return swapChainFramebuffers_;
 }
 
+VkSwapchainKHR swapchain::getSwapchain()
+{
+    return swapChain_;
+}
+
 VkExtent2D swapchain::getSwapChainExtent()
 {
     return swapChainExtent_;

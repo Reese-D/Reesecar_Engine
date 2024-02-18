@@ -47,21 +47,18 @@ public:
         auto format = pMySwapchain_->getImageFormat();
 
         pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format);
-        VkRenderPass renderPassVk = pMyGraphicsPipeline_->getRenderPass();
-        pMySwapchain_->createFrameBuffers(renderPassVk);
+        renderPass_ = pMyGraphicsPipeline_->getRenderPass();
+        pMySwapchain_->createFrameBuffers(renderPass_);
         commandPool_ = createCommandPool(surface);
 
-        auto graphicsPipelineVk = pMyGraphicsPipeline_->getGraphicsPipeline();
-        auto swapChainExtentVk = pMySwapchain_->getSwapChainExtent();
-        auto swapChainFrameBuffersVk = pMySwapchain_->getSwapChainFramebuffers();
+        graphicsPipeline_ = pMyGraphicsPipeline_->getGraphicsPipeline();
+        swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
+        swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
+        swapchain_ = pMySwapchain_->getSwapchain();
         
-        // recordCommandBuffer(createCommandBuffer()
-        //                     ,0
-        //                     ,renderPassVk
-        //                     ,swapChainExtentVk
-        //                     ,graphicsPipelineVk
-        //                     ,swapChainFrameBuffersVk);
-
+        commandBuffer_ = createCommandBuffer();
+        createSyncObjects();
+        
         mainLoop(glfwWindow);
 
         cleanup(surface, *myVkInstance);
@@ -73,21 +70,99 @@ private:
     VkQueue graphicsQueue_;
     VkQueue presentQueue_;
     VkCommandPool commandPool_;
-
+    VkRenderPass renderPass_;
+    VkSemaphore imageAvailableSemaphore_;
+    VkSemaphore renderFinishedSemaphore_;
+    VkFence inFlightFence_;
+    VkPipeline graphicsPipeline_;
+    VkExtent2D swapchainExtent_;
+    VkCommandBuffer commandBuffer_;
+    VkSwapchainKHR swapchain_;
+    
+    std::vector<VkFramebuffer> swapchainFramebuffers_;
+    
     queue::QueueFamilyIndices indices_;
     
     swapchain* pMySwapchain_;
     graphics_pipeline* pMyGraphicsPipeline_;
     device* pMyDevice_;
+
     
     
     void mainLoop(std::shared_ptr<GLFWwindow> window)
     {
         while (!glfwWindowShouldClose(window.get())) {
             glfwPollEvents();
+            drawFrame();
+        }
+        vkDeviceWaitIdle(logicalDevice_);
+    }
+
+    void createSyncObjects() {
+        VkSemaphoreCreateInfo semaphoreInfo{};
+        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;//first call to vkWaitForFences will immediately return
+        
+        if (vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &imageAvailableSemaphore_) != VK_SUCCESS ||
+            vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &renderFinishedSemaphore_) != VK_SUCCESS ||
+            vkCreateFence(logicalDevice_, &fenceInfo, nullptr, &inFlightFence_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create semaphores!");
         }
     }
-    
+
+    void drawFrame()
+    {
+        vkWaitForFences(logicalDevice_, 1, &inFlightFence_, VK_TRUE, UINT64_MAX);
+        vkResetFences(logicalDevice_, 1, &inFlightFence_);
+        uint32_t imageIndex;
+        vkAcquireNextImageKHR(logicalDevice_, swapchain_, UINT64_MAX, imageAvailableSemaphore_, VK_NULL_HANDLE, &imageIndex);
+
+        vkResetCommandBuffer(commandBuffer_, /*VkCommandBufferResetFlagBits*/ 0);
+        
+        
+        recordCommandBuffer(commandBuffer_
+                            ,imageIndex
+                            ,renderPass_
+                            ,swapchainExtent_
+                            ,graphicsPipeline_
+                            ,swapchainFramebuffers_);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        VkSemaphore waitSemaphores[] = {imageAvailableSemaphore_};
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        submitInfo.waitSemaphoreCount = 1;
+        submitInfo.pWaitSemaphores = waitSemaphores;
+        submitInfo.pWaitDstStageMask = waitStages;
+
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer_;
+
+        VkSemaphore signalSemaphores[] = {renderFinishedSemaphore_};
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores = signalSemaphores;
+
+        if (vkQueueSubmit(graphicsQueue_, 1, &submitInfo, inFlightFence_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to submit draw command buffer!");
+        }
+
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+        VkSwapchainKHR swapChains[] = {swapchain_};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+
+        presentInfo.pImageIndices = &imageIndex;
+
+        vkQueuePresentKHR(presentQueue_, &presentInfo);
+    }
     VkCommandBuffer createCommandBuffer()
     {
         std::cout << "creating command buffer" << std::endl;
@@ -130,9 +205,15 @@ private:
         delete pMyGraphicsPipeline_;
         std::cout << "destroying command pool" << std::endl;
         vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
+
+        vkDestroySemaphore(logicalDevice_, imageAvailableSemaphore_, nullptr);
+        vkDestroySemaphore(logicalDevice_, renderFinishedSemaphore_, nullptr);
+        vkDestroyFence(logicalDevice_, inFlightFence_, nullptr);
+
         delete pMyDevice_;
         vkDestroySurfaceKHR(instance, surface, nullptr);
         glfwTerminate();
+
     }
 
     std::shared_ptr<GLFWwindow> initWindow()

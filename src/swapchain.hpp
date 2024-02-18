@@ -16,6 +16,7 @@ public:
     void createFrameBuffers(VkRenderPass renderPass);
     VkExtent2D getSwapChainExtent();
     std::vector<VkFramebuffer> getSwapChainFramebuffers();
+    VkSwapchainKHR getSwapchain();
 private:
     VkDevice device_;
     VkSwapchainKHR swapChain_;
