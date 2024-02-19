@@ -30,27 +30,29 @@ class HelloTriangleApplication {
 public:
     void run()
     {
-        std::shared_ptr<GLFWwindow> glfwWindow = initWindow();
+        glfwWindow_ = initWindow();
 
         //printAvailableExtensions();
         auto myInstance = instance{validationLayers};
         std::shared_ptr<VkInstance> myVkInstance = myInstance.getInstance();
-        auto surface = window::getSurface(*myVkInstance, glfwWindow);
-        pMyDevice_ = new device(myVkInstance, surface, WIDTH, HEIGHT);
+        surface_ = window::getSurface(*myVkInstance, glfwWindow_);
+        pMyDevice_ = new device(myVkInstance, surface_, WIDTH, HEIGHT);
 
         physicalDevice_ = pMyDevice_->getPhysicalDevice();
         logicalDevice_ = pMyDevice_->getLogicalDevice();
-        indices_ = queue::findQueueFamilies(physicalDevice_, surface);
+        indices_ = queue::findQueueFamilies(physicalDevice_, surface_);
         graphicsQueue_ = pMyDevice_->getGraphicsDeviceQueue(logicalDevice_, indices_);
         presentQueue_ = pMyDevice_->getPresentDeviceQueue(logicalDevice_, indices_);
         
-        pMySwapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface, WIDTH, HEIGHT);
+        pMySwapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface_, WIDTH, HEIGHT);
+
+        //note: image format is just an enum, don't need to recreate this if swapchain dies/changes
         auto format = pMySwapchain_->getImageFormat();
 
         pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format);
         renderPass_ = pMyGraphicsPipeline_->getRenderPass();
         pMySwapchain_->createFrameBuffers(renderPass_);
-        commandPool_ = createCommandPool(surface);
+        commandPool_ = createCommandPool(surface_);
 
         graphicsPipeline_ = pMyGraphicsPipeline_->getGraphicsPipeline();
         swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
@@ -60,11 +62,11 @@ public:
         createCommandBuffers();
         createSyncObjects();
         
-        mainLoop(glfwWindow);
+        mainLoop(glfwWindow_);
 
-        cleanup(surface, *myVkInstance);
+        cleanup(surface_, *myVkInstance);
     }
-
+    bool framebufferResized_ = false;
 private:
     uint32_t currentFrame_ = 0;
     
@@ -81,7 +83,9 @@ private:
     VkExtent2D swapchainExtent_;
     std::vector<VkCommandBuffer> commandBuffers_;
     VkSwapchainKHR swapchain_;
-    
+    VkSurfaceKHR surface_;
+    std::shared_ptr<GLFWwindow> glfwWindow_;
+
     std::vector<VkFramebuffer> swapchainFramebuffers_;
     
     queue::QueueFamilyIndices indices_;
@@ -96,9 +100,28 @@ private:
     {
         while (!glfwWindowShouldClose(window.get())) {
             glfwPollEvents();
+            //glfwSetWindowSize(window.get(), WIDTH, HEIGHT);
             drawFrame();
         }
         vkDeviceWaitIdle(logicalDevice_);
+    }
+
+    void recreateSwapChain() {
+        int width = 0, height = 0;
+        glfwGetFramebufferSize(glfwWindow_.get(), &width, &height);
+        while (width == 0 || height == 0) {
+            glfwGetFramebufferSize(glfwWindow_.get(), &width, &height);
+            glfwWaitEvents();
+        }
+        
+        vkDeviceWaitIdle(logicalDevice_);
+
+        delete pMySwapchain_;
+        pMySwapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface_, width, height);
+        pMySwapchain_->createFrameBuffers(renderPass_);
+        swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
+        swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
+        swapchain_ = pMySwapchain_->getSwapchain();
     }
 
     void createSyncObjects() {
@@ -125,13 +148,19 @@ private:
     void drawFrame()
     {
         vkWaitForFences(logicalDevice_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
-        vkResetFences(logicalDevice_, 1, &inFlightFences_[currentFrame_]);
-        uint32_t imageIndex;
-        vkAcquireNextImageKHR(logicalDevice_, swapchain_, UINT64_MAX, imageAvailableSemaphores_[currentFrame_], VK_NULL_HANDLE, &imageIndex);
 
+        uint32_t imageIndex;
+        VkResult result = vkAcquireNextImageKHR(logicalDevice_, swapchain_, UINT64_MAX, imageAvailableSemaphores_[currentFrame_], VK_NULL_HANDLE, &imageIndex);
+
+        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+            recreateSwapChain();
+            return;
+        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+            throw std::runtime_error("failed to acquire swap chain image!");
+        }
+        vkResetFences(logicalDevice_, 1, &inFlightFences_[currentFrame_]);
+        
         vkResetCommandBuffer(commandBuffers_[currentFrame_], /*VkCommandBufferResetFlagBits*/ 0);
-        
-        
         recordCommandBuffer(commandBuffers_[currentFrame_]
                             ,imageIndex
                             ,renderPass_
@@ -171,7 +200,13 @@ private:
 
         presentInfo.pImageIndices = &imageIndex;
 
-        vkQueuePresentKHR(presentQueue_, &presentInfo);
+        result = vkQueuePresentKHR(presentQueue_, &presentInfo);
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized_) {
+            framebufferResized_ = false;
+            recreateSwapChain();
+        } else if (result != VK_SUCCESS) {
+            throw std::runtime_error("failed to present swap chain image!");
+        }
 
         currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
     }
@@ -211,7 +246,6 @@ private:
 
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
-        
         delete pMySwapchain_;
         delete pMyGraphicsPipeline_;
         std::cout << "destroying command pool" << std::endl;
@@ -235,7 +269,16 @@ private:
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); //disable resizing for now, takes more complexity to handle it
         std::shared_ptr<GLFWwindow> window(glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr), &glfwDestroyWindow);
         
+        glfwSetWindowUserPointer(window.get(), this);
+        glfwSetFramebufferSizeCallback(window.get(), framebufferResizeCallback);
+        
         return window;
+    }
+
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+        auto app = reinterpret_cast<HelloTriangleApplication*>(glfwGetWindowUserPointer(window));
+        app->framebufferResized_ = true;
+        std::cout << "resized window" << std::endl;
     }
 
     void printAvailableExtensions()
