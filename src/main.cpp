@@ -1,7 +1,7 @@
 //this will include vulkan/vulkan.h through GLFW
 #include <memory>
-#include <vulkan/vulkan_core.h>
 
+#include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -93,8 +93,6 @@ private:
     swapchain* pMySwapchain_;
     graphics_pipeline* pMyGraphicsPipeline_;
     device* pMyDevice_;
-
-    
     
     void mainLoop(std::shared_ptr<GLFWwindow> window)
     {
