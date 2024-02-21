@@ -50,13 +50,6 @@ private:
     VkPipeline graphicsPipeline_;
     render_pass* pCustomRenderPass_;
 
-    //temporary constant to test shader
-    const std::vector<Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
-    };
-
     void createGraphicsPipeline();
     VkShaderModule createShaderModule(const std::vector<char>& code);
     static std::vector<char> readFile(const std::string& filename);

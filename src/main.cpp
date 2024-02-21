@@ -59,6 +59,8 @@ public:
         swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
         swapchain_ = pMySwapchain_->getSwapchain();
         
+        createVertexBuffer();
+                    
         createCommandBuffers();
         createSyncObjects();
         
@@ -84,16 +86,70 @@ private:
     std::vector<VkCommandBuffer> commandBuffers_;
     VkSwapchainKHR swapchain_;
     VkSurfaceKHR surface_;
-    std::shared_ptr<GLFWwindow> glfwWindow_;
-
+    VkBuffer vertexBuffer_;
+    VkDeviceMemory vertexBufferMemory_;
     std::vector<VkFramebuffer> swapchainFramebuffers_;
+    
+    std::shared_ptr<GLFWwindow> glfwWindow_;
     
     queue::QueueFamilyIndices indices_;
     
     swapchain* pMySwapchain_;
     graphics_pipeline* pMyGraphicsPipeline_;
     device* pMyDevice_;
-    
+
+    //temporary constant to test shader
+    const std::vector<graphics_pipeline::Vertex> vertices = {
+        {{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
+        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    };
+
+    void createVertexBuffer() {
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+        bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+        if (vkCreateBuffer(logicalDevice_, &bufferInfo, nullptr, &vertexBuffer_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create vertex buffer!");
+        }
+        
+        VkMemoryRequirements memRequirements;
+        vkGetBufferMemoryRequirements(logicalDevice_, vertexBuffer_, &memRequirements);
+
+        VkMemoryAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocInfo.allocationSize = memRequirements.size;
+        allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &vertexBufferMemory_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate vertex buffer memory!");
+        }
+
+        vkBindBufferMemory(logicalDevice_, vertexBuffer_, vertexBufferMemory_, 0);
+
+        void* data;
+        vkMapMemory(logicalDevice_, vertexBufferMemory_, 0, bufferInfo.size, 0, &data);
+        memcpy(data, vertices.data(), (size_t) bufferInfo.size);
+        vkUnmapMemory(logicalDevice_, vertexBufferMemory_);
+    }
+
+    //Note only checks for the memory TYPE not the HEAP it comes from which can make
+    //a big difference. For example, one heap might be swap space and another from RAM.
+    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+        VkPhysicalDeviceMemoryProperties memProperties;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProperties);
+
+        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+            if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+
+        throw std::runtime_error("failed to find suitable memory type!");
+    }
     void mainLoop(std::shared_ptr<GLFWwindow> window)
     {
         while (!glfwWindowShouldClose(window.get())) {
@@ -162,8 +218,6 @@ private:
         recordCommandBuffer(commandBuffers_[currentFrame_]
                             ,imageIndex
                             ,renderPass_
-                            ,swapchainExtent_
-                            ,graphicsPipeline_
                             ,swapchainFramebuffers_);
 
         VkSubmitInfo submitInfo{};
@@ -245,6 +299,8 @@ private:
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
         delete pMySwapchain_;
+        vkDestroyBuffer(logicalDevice_, vertexBuffer_, nullptr);
+        vkFreeMemory(logicalDevice_, vertexBufferMemory_, nullptr);
         delete pMyGraphicsPipeline_;
         std::cout << "destroying command pool" << std::endl;
         vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
@@ -295,8 +351,6 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer
                              ,uint32_t imageIndex
                              ,VkRenderPass renderPass
-                             ,VkExtent2D swapChainExtent
-                             ,VkPipeline graphicsPipeline
                              ,std::vector<VkFramebuffer> swapChainFramebuffers) {
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -312,30 +366,34 @@ private:
         renderPassInfo.renderPass = renderPass;
         renderPassInfo.framebuffer = swapChainFramebuffers[imageIndex];
         renderPassInfo.renderArea.offset = {0, 0};
-        renderPassInfo.renderArea.extent = swapChainExtent; //TODO get swapchain extent
+        renderPassInfo.renderArea.extent = swapchainExtent_; //TODO get swapchain extent
 
         VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
         renderPassInfo.clearValueCount = 1;
         renderPassInfo.pClearValues = &clearColor;
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);//TODO get graphics pipeline
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);//TODO get graphics pipeline
 
+        VkBuffer vertexBuffers[] = {vertexBuffer_};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = static_cast<float>(swapChainExtent.width);
-        viewport.height = static_cast<float>(swapChainExtent.height);
+        viewport.width = static_cast<float>(swapchainExtent_.width);
+        viewport.height = static_cast<float>(swapchainExtent_.height);
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
         VkRect2D scissor{};
         scissor.offset = {0, 0};
-        scissor.extent = swapChainExtent;
+        scissor.extent = swapchainExtent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
         vkCmdEndRenderPass(commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
