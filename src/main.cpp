@@ -58,8 +58,9 @@ public:
         swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
         swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
         swapchain_ = pMySwapchain_->getSwapchain();
-        
+
         createVertexBuffer();
+        createIndexBuffer();
                     
         createCommandBuffers();
         createSyncObjects();
@@ -86,8 +87,12 @@ private:
     std::vector<VkCommandBuffer> commandBuffers_;
     VkSwapchainKHR swapchain_;
     VkSurfaceKHR surface_;
+    
     VkBuffer vertexBuffer_;
     VkDeviceMemory vertexBufferMemory_;
+    VkBuffer indexBuffer_;
+    VkDeviceMemory indexBufferMemory_;
+        
     std::vector<VkFramebuffer> swapchainFramebuffers_;
     
     std::shared_ptr<GLFWwindow> glfwWindow_;
@@ -100,10 +105,15 @@ private:
 
     //temporary constant to test shader
     const std::vector<graphics_pipeline::Vertex> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
     };
+
+    const std::vector<uint16_t> indices = {
+        0, 1, 2, 2, 3, 0
+    }; 
 
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
     {
@@ -169,6 +179,40 @@ private:
         vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
         vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
     }
+
+    void createIndexBuffer()
+    {
+
+        //TODO refactor this and vertex buffer to something more common, they're basically identical with the exception of the notes listed below
+        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();//NOTE: Different than vertex buffer, need to pass in the indices/vertices
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+
+        createBuffer(bufferSize
+                     ,VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                     ,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                     ,stagingBuffer
+                     ,stagingBufferMemory);
+
+        void* data;
+        vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
+        memcpy(data, indices.data(), (size_t) bufferSize);
+        vkUnmapMemory(logicalDevice_, stagingBufferMemory);
+
+        createBuffer(bufferSize
+                     ,VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT //NOTE: Different than vertex buffer (for refactoring), would need to pass in this bit
+                     ,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+                     ,indexBuffer_ //NOTE: Different buffer
+                     ,indexBufferMemory_); //NOTE: Different memory
+
+        
+        copyBuffer(stagingBuffer, indexBuffer_, bufferSize);//NOTE: Different buffer
+
+        vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
+        vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
+    }
+
 
     void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
 
@@ -369,8 +413,13 @@ private:
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
         delete pMySwapchain_;
+        
+        vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
+        vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
+        
         vkDestroyBuffer(logicalDevice_, vertexBuffer_, nullptr);
         vkFreeMemory(logicalDevice_, vertexBufferMemory_, nullptr);
+        
         delete pMyGraphicsPipeline_;
         std::cout << "destroying command pool" << std::endl;
         vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
@@ -448,6 +497,7 @@ private:
         VkBuffer vertexBuffers[] = {vertexBuffer_};
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer_, 0, VK_INDEX_TYPE_UINT16);
         
         VkViewport viewport{};
         viewport.x = 0.0f;
@@ -463,8 +513,8 @@ private:
         scissor.extent = swapchainExtent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
-
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        
         vkCmdEndRenderPass(commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to record command buffer!");
