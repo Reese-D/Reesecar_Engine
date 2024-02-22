@@ -5,6 +5,9 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <glm/gtc/matrix_transform.hpp>
+#include <chrono>
+
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
@@ -63,6 +66,7 @@ public:
 
         createVertexBuffer();
         createIndexBuffer();
+        createUniformBuffers();
                     
         createCommandBuffers();
         createSyncObjects();
@@ -96,6 +100,10 @@ private:
     VkDeviceMemory indexBufferMemory_;
 
     VkDescriptorSetLayout descriptorSetLayout_;
+    
+    std::vector<VkBuffer> uniformBuffers_;
+    std::vector<VkDeviceMemory> uniformBuffersMemory_;
+    std::vector<void*> uniformBuffersMapped_;
     
     std::vector<VkFramebuffer> swapchainFramebuffers_;
     
@@ -142,7 +150,39 @@ private:
             throw std::runtime_error("failed to create descriptor set layout!");
         }
     }
+    
+    void createUniformBuffers() {
+        VkDeviceSize bufferSize = sizeof(UniformBufferObject);
 
+        uniformBuffers_.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffersMemory_.resize(MAX_FRAMES_IN_FLIGHT);
+        uniformBuffersMapped_.resize(MAX_FRAMES_IN_FLIGHT);
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            createBuffer(bufferSize
+                         ,VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+                         ,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                         ,uniformBuffers_[i]
+                         ,uniformBuffersMemory_[i]);
+            
+            vkMapMemory(logicalDevice_, uniformBuffersMemory_[i], 0, bufferSize, 0, &uniformBuffersMapped_[i]);
+        }
+    }
+    void updateUniformBuffer(uint32_t currentImage) {
+        static auto startTime = std::chrono::high_resolution_clock::now();
+
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+        UniformBufferObject ubo{};
+        ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.projection = glm::perspective(glm::radians(45.0f), swapchainExtent_.width / (float) swapchainExtent_.height, 0.1f, 10.0f);
+        ubo.projection[1][1] *= -1; //GLM was originally for openGL where the Y coordinate was inversed for clip
+
+        memcpy(uniformBuffersMapped_[currentImage], &ubo, sizeof(ubo));
+    }
+    
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
     {
         VkBufferCreateInfo bufferInfo{};
@@ -356,6 +396,8 @@ private:
         } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
             throw std::runtime_error("failed to acquire swap chain image!");
         }
+        
+        updateUniformBuffer(currentFrame_);
         vkResetFences(logicalDevice_, 1, &inFlightFences_[currentFrame_]);
         
         vkResetCommandBuffer(commandBuffers_[currentFrame_], /*VkCommandBufferResetFlagBits*/ 0);
@@ -443,6 +485,11 @@ private:
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
         delete pMySwapchain_;
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            vkDestroyBuffer(logicalDevice_, uniformBuffers_[i], nullptr);
+            vkFreeMemory(logicalDevice_, uniformBuffersMemory_[i], nullptr);
+        }
         
         vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
         vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
