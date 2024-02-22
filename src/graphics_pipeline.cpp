@@ -3,8 +3,9 @@
 #include <iostream>
 #include <fstream>
 
-graphics_pipeline::graphics_pipeline(VkDevice device, VkFormat format)
+graphics_pipeline::graphics_pipeline(VkDevice device, VkFormat format, VkDescriptorSetLayout descriptorSetLayout)
     :device_(device)
+    ,descriptorSetLayout_(descriptorSetLayout)
 {
     pCustomRenderPass_ = new render_pass(device_, format);
     createGraphicsPipeline();
@@ -108,7 +109,8 @@ void graphics_pipeline::createGraphicsPipeline() {
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout_;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
     if (vkCreatePipelineLayout(device_, &pipelineLayoutInfo, nullptr, &pipelineLayout_) != VK_SUCCESS) {

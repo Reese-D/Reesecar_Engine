@@ -9,7 +9,7 @@
 class graphics_pipeline
 {
 public:
-    graphics_pipeline(VkDevice device, VkFormat format);
+    graphics_pipeline(VkDevice device, VkFormat format, VkDescriptorSetLayout descriptorSetLayout);
     ~graphics_pipeline();
     VkRenderPass getRenderPass();
     VkPipeline getGraphicsPipeline();
@@ -48,9 +48,11 @@ private:
     VkPipelineLayout pipelineLayout_;
     VkDevice device_;
     VkPipeline graphicsPipeline_;
+    VkDescriptorSetLayout descriptorSetLayout_;
     render_pass* pCustomRenderPass_;
 
     void createGraphicsPipeline();
     VkShaderModule createShaderModule(const std::vector<char>& code);
     static std::vector<char> readFile(const std::string& filename);
 };
+

@@ -49,11 +49,13 @@ public:
         //note: image format is just an enum, don't need to recreate this if swapchain dies/changes
         auto format = pMySwapchain_->getImageFormat();
 
-        pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format);
+        createDescriptorSetLayout();
+        
+        pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format, descriptorSetLayout_);
         renderPass_ = pMyGraphicsPipeline_->getRenderPass();
         pMySwapchain_->createFrameBuffers(renderPass_);
         commandPool_ = createCommandPool(surface_);
-
+        
         graphicsPipeline_ = pMyGraphicsPipeline_->getGraphicsPipeline();
         swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
         swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
@@ -92,7 +94,9 @@ private:
     VkDeviceMemory vertexBufferMemory_;
     VkBuffer indexBuffer_;
     VkDeviceMemory indexBufferMemory_;
-        
+
+    VkDescriptorSetLayout descriptorSetLayout_;
+    
     std::vector<VkFramebuffer> swapchainFramebuffers_;
     
     std::shared_ptr<GLFWwindow> glfwWindow_;
@@ -113,7 +117,31 @@ private:
 
     const std::vector<uint16_t> indices = {
         0, 1, 2, 2, 3, 0
-    }; 
+    };
+
+    struct UniformBufferObject {
+        glm::mat4 model;
+        glm::mat4 view;
+        glm::mat4 projection;
+    };
+
+    void createDescriptorSetLayout() {
+        VkDescriptorSetLayoutBinding uboLayoutBinding{};
+        uboLayoutBinding.binding = 0;
+        uboLayoutBinding.descriptorCount = 1;
+        uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboLayoutBinding.pImmutableSamplers = nullptr;
+        uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+        VkDescriptorSetLayoutCreateInfo layoutInfo{};
+        layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        layoutInfo.bindingCount = 1;
+        layoutInfo.pBindings = &uboLayoutBinding;
+
+        if (vkCreateDescriptorSetLayout(logicalDevice_, &layoutInfo, nullptr, &descriptorSetLayout_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor set layout!");
+        }
+    }
 
     void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
     {
@@ -430,6 +458,9 @@ private:
             vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
             vkDestroyFence(logicalDevice_, inFlightFences_[i], nullptr);
         }
+
+        vkDestroyDescriptorSetLayout(logicalDevice_, descriptorSetLayout_, nullptr);
+        
         delete pMyDevice_;
         vkDestroySurfaceKHR(instance, surface, nullptr);
         glfwTerminate();
