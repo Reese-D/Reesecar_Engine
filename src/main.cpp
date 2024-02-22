@@ -184,6 +184,8 @@ private:
     {
 
         //TODO refactor this and vertex buffer to something more common, they're basically identical with the exception of the notes listed below
+        //EDIT: Alternative, use a single VkBuffer to make things more efficient. See here: https://developer.nvidia.com/vulkan-memory-management
+        //Also see here at the bottom: https://vulkan-tutorial.com/en/Vertex_buffers/Index_buffer
         VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();//NOTE: Different than vertex buffer, need to pass in the indices/vertices
 
         VkBuffer stagingBuffer;
