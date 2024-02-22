@@ -125,6 +125,8 @@ private:
         allocInfo.allocationSize = memRequirements.size;
         allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
+        //TODO: don't callf or every individual buffer. see comments at the end of this chapter: https://vulkan-tutorial.com/Vertex_buffers/Staging_buffer
+        //consider using https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
         if (vkAllocateMemory(logicalDevice_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
             throw std::runtime_error("failed to allocate vertex buffer memory!");
         }
@@ -137,16 +139,71 @@ private:
     {
 
         VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+        VkBuffer stagingBuffer;
+        VkDeviceMemory stagingBufferMemory;
+
+        //setup the staging buffer 
         createBuffer(bufferSize
-                     ,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                     ,VK_BUFFER_USAGE_TRANSFER_SRC_BIT
                      ,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+                     ,stagingBuffer
+                     ,stagingBufferMemory);
+
+        //put it in CPU accessible memory
+        void* data;
+        vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
+        memcpy(data, vertices.data(), (size_t) bufferSize);
+        vkUnmapMemory(logicalDevice_, stagingBufferMemory);
+
+        //now create another buffer, this time for the GPU only (not cpu accessible)
+        createBuffer(bufferSize
+                     ,VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                     ,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
                      ,vertexBuffer_
                      ,vertexBufferMemory_);
-        
-        void* data;
-        vkMapMemory(logicalDevice_, vertexBufferMemory_, 0, bufferSize, 0, &data);
-        memcpy(data, vertices.data(), (size_t) bufferSize);
-        vkUnmapMemory(logicalDevice_, vertexBufferMemory_);
+
+        //copy the data from staging to vertex and cleanup the staging buffer (vertex cleaned up later)
+        copyBuffer(stagingBuffer, vertexBuffer_, bufferSize);
+
+        vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
+        vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
+    }
+
+    void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+
+        //TODO: Look into using another command pool for short lived command buffers like this
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandPool = commandPool_;
+        allocInfo.commandBufferCount = 1;
+
+        VkCommandBuffer commandBuffer;
+        vkAllocateCommandBuffers(logicalDevice_, &allocInfo, &commandBuffer);
+
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; //let driver know we're only using it once for optimization
+
+        vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+        VkBufferCopy copyRegion{};
+        copyRegion.size = size;
+        vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+        vkEndCommandBuffer(commandBuffer);
+
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
+
+        vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE);
+        vkQueueWaitIdle(graphicsQueue_);
+
+        vkFreeCommandBuffers(logicalDevice_, commandPool_, 1, &commandBuffer);
+        //NOTE: could use a fence here to wait if multiple transfers are done simultaneously. We're only doing 1 right now so we'll just execute immediately
     }
 
     //Note only checks for the memory TYPE not the HEAP it comes from which can make
