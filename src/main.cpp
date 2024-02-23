@@ -5,6 +5,10 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_RADIANS
+//Optional, removes the need for alignas on UBO's, but doesn't work for nested structures.
+//#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES 
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <chrono>
 
@@ -134,9 +138,9 @@ private:
     };
 
     struct UniformBufferObject {
-        glm::mat4 model;
-        glm::mat4 view;
-        glm::mat4 projection;
+        alignas(16) glm::mat4 model;
+        alignas(16) glm::mat4 view;
+        alignas(16) glm::mat4 projection;
     };
 
     void createDescriptorSetLayout() {
