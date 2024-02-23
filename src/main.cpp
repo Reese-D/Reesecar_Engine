@@ -55,6 +55,8 @@ public:
         createDescriptorSetLayout();
         
         pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format, descriptorSetLayout_);
+        pipelineLayout_ = pMyGraphicsPipeline_->getPipelineLayout();
+        
         renderPass_ = pMyGraphicsPipeline_->getRenderPass();
         pMySwapchain_->createFrameBuffers(renderPass_);
         commandPool_ = createCommandPool(surface_);
@@ -67,7 +69,9 @@ public:
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
-                    
+        createDescriptorPool();
+        createDescriptorSets();
+        
         createCommandBuffers();
         createSyncObjects();
         
@@ -93,6 +97,7 @@ private:
     std::vector<VkCommandBuffer> commandBuffers_;
     VkSwapchainKHR swapchain_;
     VkSurfaceKHR surface_;
+    VkPipelineLayout pipelineLayout_;
     
     VkBuffer vertexBuffer_;
     VkDeviceMemory vertexBufferMemory_;
@@ -100,13 +105,14 @@ private:
     VkDeviceMemory indexBufferMemory_;
 
     VkDescriptorSetLayout descriptorSetLayout_;
-    
+    VkDescriptorPool descriptorPool_;
+
     std::vector<VkBuffer> uniformBuffers_;
     std::vector<VkDeviceMemory> uniformBuffersMemory_;
     std::vector<void*> uniformBuffersMapped_;
     
     std::vector<VkFramebuffer> swapchainFramebuffers_;
-    
+    std::vector<VkDescriptorSet> descriptorSets_;    
     std::shared_ptr<GLFWwindow> glfwWindow_;
     
     queue::QueueFamilyIndices indices_;
@@ -150,6 +156,54 @@ private:
             throw std::runtime_error("failed to create descriptor set layout!");
         }
     }
+
+    void createDescriptorPool() {
+        VkDescriptorPoolSize poolSize{};
+        poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.poolSizeCount = 1;
+        poolInfo.pPoolSizes = &poolSize;
+        poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+
+        if (vkCreateDescriptorPool(logicalDevice_, &poolInfo, nullptr, &descriptorPool_) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create descriptor pool!");
+        }
+    }
+
+    void createDescriptorSets() {
+        std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout_);
+        VkDescriptorSetAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        allocInfo.descriptorPool = descriptorPool_;
+        allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+        allocInfo.pSetLayouts = layouts.data();
+
+        descriptorSets_.resize(MAX_FRAMES_IN_FLIGHT);
+        if (vkAllocateDescriptorSets(logicalDevice_, &allocInfo, descriptorSets_.data()) != VK_SUCCESS) {
+            throw std::runtime_error("failed to allocate descriptor sets!");
+        }
+
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            VkDescriptorBufferInfo bufferInfo{};
+            bufferInfo.buffer = uniformBuffers_[i];
+            bufferInfo.offset = 0;
+            bufferInfo.range = sizeof(UniformBufferObject);
+
+            VkWriteDescriptorSet descriptorWrite{};
+            descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrite.dstSet = descriptorSets_[i];
+            descriptorWrite.dstBinding = 0;
+            descriptorWrite.dstArrayElement = 0;
+            descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrite.descriptorCount = 1;
+            descriptorWrite.pBufferInfo = &bufferInfo;
+
+            vkUpdateDescriptorSets(logicalDevice_, 1, &descriptorWrite, 0, nullptr);
+        }
+    }
     
     void createUniformBuffers() {
         VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -180,6 +234,7 @@ private:
         ubo.projection = glm::perspective(glm::radians(45.0f), swapchainExtent_.width / (float) swapchainExtent_.height, 0.1f, 10.0f);
         ubo.projection[1][1] *= -1; //GLM was originally for openGL where the Y coordinate was inversed for clip
 
+        //TODO: not the most efficient way, consider using push constants
         memcpy(uniformBuffersMapped_[currentImage], &ubo, sizeof(ubo));
     }
     
@@ -243,7 +298,7 @@ private:
 
         //copy the data from staging to vertex and cleanup the staging buffer (vertex cleaned up later)
         copyBuffer(stagingBuffer, vertexBuffer_, bufferSize);
-
+        
         vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
         vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
     }
@@ -490,6 +545,7 @@ private:
             vkDestroyBuffer(logicalDevice_, uniformBuffers_[i], nullptr);
             vkFreeMemory(logicalDevice_, uniformBuffersMemory_[i], nullptr);
         }
+
         
         vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
         vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
@@ -505,7 +561,8 @@ private:
             vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
             vkDestroyFence(logicalDevice_, inFlightFences_[i], nullptr);
         }
-
+        
+        vkDestroyDescriptorPool(logicalDevice_, descriptorPool_, nullptr);
         vkDestroyDescriptorSetLayout(logicalDevice_, descriptorSetLayout_, nullptr);
         
         delete pMyDevice_;
@@ -574,11 +631,6 @@ private:
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);//TODO get graphics pipeline
 
-        VkBuffer vertexBuffers[] = {vertexBuffer_};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, indexBuffer_, 0, VK_INDEX_TYPE_UINT16);
-        
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
@@ -593,8 +645,15 @@ private:
         scissor.extent = swapchainExtent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+        VkBuffer vertexBuffers[] = {vertexBuffer_};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer_, 0, VK_INDEX_TYPE_UINT16);
+        
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1, &descriptorSets_[currentFrame_], 0, nullptr);
+        
+        vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
         vkCmdEndRenderPass(commandBuffer);
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
             throw std::runtime_error("failed to record command buffer!");

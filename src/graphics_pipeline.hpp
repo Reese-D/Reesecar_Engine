@@ -13,7 +13,7 @@ public:
     ~graphics_pipeline();
     VkRenderPass getRenderPass();
     VkPipeline getGraphicsPipeline();
-
+    VkPipelineLayout getPipelineLayout();
     struct Vertex {
         glm::vec2 pos;
         glm::vec3 color;
