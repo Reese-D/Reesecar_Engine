@@ -2,7 +2,7 @@ CXX=clang++
 CC=clang
 MODULES := src 
 # look for include files in each of the modules
-CXXFLAGS := $(patsubst %,-I%,$(MODULES)) -std=c++20 -Wall -O2
+CXXFLAGS := $(patsubst %,-I%,$(MODULES)) -std=c++20 -Wall -O2 -Itextures/
 # lm = libmath (math.h)
 LIBS := -L/usr/local/lib/ -lm -lvulkan -lglfw -lglm
 # each module will add to this
