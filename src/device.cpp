@@ -15,6 +15,7 @@ device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int w
     //we end up doing these twice (see getPhysicalDevice)
     //they're fast operations however, so we'll take the speed hit for cleaniness
     physicalDeviceFeatures_ = getDeviceFeatures(physicalDevice_);
+    physicalDeviceFeatures_.samplerAnisotropy = VK_TRUE;
     physicalDeviceProperties_ = getDeviceProperties(physicalDevice_);
     indices_ = queue::findQueueFamilies(physicalDevice_, surface);
 
@@ -24,19 +25,19 @@ device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int w
 VkPhysicalDevice device::getPhysicalDevice()
 {
     return physicalDevice_;
-}                                          
+}
+
 VkDevice device::getLogicalDevice()
 {
     return logicalDevice_;
 }
+
 device::~device()
 {
     std::cout << "device destructor was called" << std::endl;
     std::cout << "destroying logical device" << std::endl;
     vkDestroyDevice(logicalDevice_, nullptr);
 }
-
-
 
 VkQueue device::getGraphicsDeviceQueue(VkDevice logicalDevice
                                        , queue::QueueFamilyIndices indices)
@@ -60,7 +61,6 @@ bool device::hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface,
     vkGetPhysicalDeviceSurfaceSupportKHR(device, indices.presentFamily.value(), surface, &presentSupport);
     return presentSupport;
 }
-
 
 VkPhysicalDevice device::getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, const std::vector<const char*> deviceExtensions)
 {
@@ -122,11 +122,15 @@ bool device::isDeviceSuitable(VkPhysicalDevice physicalDevice
     bool swapChainAdequate = false;
     swapchain::SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
     swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+
+    VkPhysicalDeviceFeatures supportedFeatures;
+    vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
     
     return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
         deviceFeatures.geometryShader &&
         indices.isComplete() &&
-        swapChainAdequate;
+        swapChainAdequate &&
+        supportedFeatures.samplerAnisotropy;
 }
 
 swapchain::SwapChainSupportDetails device::querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface)
