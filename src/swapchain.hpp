@@ -17,6 +17,7 @@ public:
     VkExtent2D getSwapChainExtent();
     std::vector<VkFramebuffer> getSwapChainFramebuffers();
     VkSwapchainKHR getSwapchain();
+    VkImageView createTextureImageView(VkImage textureImage);
 private:
     VkDevice device_;
     VkSwapchainKHR swapChain_;
@@ -27,6 +28,7 @@ private:
     std::vector<VkFramebuffer> swapChainFramebuffers_;
 
     void createImageViews();
+    VkImageView createImageView(VkImage image, VkFormat format);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, int width, int height);

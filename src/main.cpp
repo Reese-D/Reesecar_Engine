@@ -73,8 +73,8 @@ public:
         swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
         swapchain_ = pMySwapchain_->getSwapchain();
 
-        std::cout << "here" << std::endl;
         createTextureImage();
+        textureImageView_ = pMySwapchain_->createTextureImageView(textureImage_);
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -114,6 +114,7 @@ private:
     VkDeviceMemory indexBufferMemory_;
 
     VkImage textureImage_;
+    VkImageView textureImageView_;
     VkDeviceMemory textureImageMemory_;
     
     VkDescriptorSetLayout descriptorSetLayout_;
@@ -699,7 +700,7 @@ private:
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
         delete pMySwapchain_;
-
+        vkDestroyImageView(logicalDevice_, textureImageView_, nullptr);
         vkDestroyImage(logicalDevice_, textureImage_, nullptr);
         vkFreeMemory(logicalDevice_, textureImageMemory_, nullptr);
         
