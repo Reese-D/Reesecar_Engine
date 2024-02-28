@@ -6,8 +6,9 @@
 #include <GLFW/glfw3.h>
 
 #define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 //Optional, removes the need for alignas on UBO's, but doesn't work for nested structures.
-//#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES 
+//#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <chrono>
@@ -47,7 +48,8 @@ public:
         std::shared_ptr<VkInstance> myVkInstance = myInstance.getInstance();
         surface_ = window::getSurface(*myVkInstance, glfwWindow_);
         pMyDevice_ = new device(myVkInstance, surface_, WIDTH, HEIGHT);
-
+        depthFormat_ = pMyDevice_->findDepthFormat();
+        
         physicalDevice_ = pMyDevice_->getPhysicalDevice();
         logicalDevice_ = pMyDevice_->getLogicalDevice();
         indices_ = queue::findQueueFamilies(physicalDevice_, surface_);
@@ -55,23 +57,30 @@ public:
         presentQueue_ = pMyDevice_->getPresentDeviceQueue(logicalDevice_, indices_);
         
         pMySwapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface_, WIDTH, HEIGHT);
+        swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
+        
+        createDepthResources();
+        depthImageView_ = pMySwapchain_->createImageView(depthImage_, depthFormat_, VK_IMAGE_ASPECT_DEPTH_BIT);
+        swapchain_ = pMySwapchain_->getSwapchain();
 
         //note: image format is just an enum, don't need to recreate this if swapchain dies/changes
-        auto format = pMySwapchain_->getImageFormat();
+        auto colorFormat = pMySwapchain_->getImageFormat();
+        //won't change, so we can use in our swapchain recreation
+
 
         createDescriptorSetLayout();
         
-        pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, format, descriptorSetLayout_);
+        pMyGraphicsPipeline_ = new graphics_pipeline(logicalDevice_, colorFormat, depthFormat_, descriptorSetLayout_);
         pipelineLayout_ = pMyGraphicsPipeline_->getPipelineLayout();
         
         renderPass_ = pMyGraphicsPipeline_->getRenderPass();
-        pMySwapchain_->createFrameBuffers(renderPass_);
         commandPool_ = createCommandPool(surface_);
+
+        pMySwapchain_->createFrameBuffers(renderPass_, depthImageView_);
+        swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
+
         
         graphicsPipeline_ = pMyGraphicsPipeline_->getGraphicsPipeline();
-        swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
-        swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
-        swapchain_ = pMySwapchain_->getSwapchain();
 
         createTextureImage();
         textureImageView_ = pMySwapchain_->createTextureImageView(textureImage_);
@@ -119,6 +128,11 @@ private:
     VkDeviceMemory textureImageMemory_;
     VkSampler textureSampler_;
     
+    VkImage depthImage_;
+    VkDeviceMemory depthImageMemory_;
+    VkImageView depthImageView_;
+    VkFormat depthFormat_;
+    
     VkDescriptorSetLayout descriptorSetLayout_;
     VkDescriptorPool descriptorPool_;
 
@@ -138,14 +152,20 @@ private:
 
     //temporary constant to test shader
     const std::vector<graphics_pipeline::Vertex> vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
+
+        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
     };
 
     const std::vector<uint16_t> indices = {
-        0, 1, 2, 2, 3, 0
+        0, 1, 2, 2, 3, 0,
+        4, 5, 6, 6, 7, 4
     };
 
     struct UniformBufferObject {
@@ -153,6 +173,10 @@ private:
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 projection;
     };
+
+    void createDepthResources() {
+        createImage(swapchainExtent_.width, swapchainExtent_.height, depthFormat_, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_, depthImageMemory_);
+    }
     
     VkCommandBuffer beginSingleTimeCommands() {
         VkCommandBufferAllocateInfo allocInfo{};
@@ -623,10 +647,13 @@ private:
 
         delete pMySwapchain_;
         pMySwapchain_ = new swapchain(logicalDevice_, physicalDevice_, surface_, width, height);
-        pMySwapchain_->createFrameBuffers(renderPass_);
         swapchainExtent_ = pMySwapchain_->getSwapChainExtent();
+        createDepthResources();        
+        pMySwapchain_->createFrameBuffers(renderPass_, depthImageView_);
+
         swapchainFramebuffers_ = pMySwapchain_->getSwapChainFramebuffers();
         swapchain_ = pMySwapchain_->getSwapchain();
+
     }
 
     void createSyncObjects() {
@@ -751,7 +778,12 @@ private:
 
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
+
         delete pMySwapchain_;
+        vkDestroyImageView(logicalDevice_, depthImageView_, nullptr);
+        vkDestroyImage(logicalDevice_, depthImage_, nullptr);
+        vkFreeMemory(logicalDevice_, depthImageMemory_, nullptr);
+        
         vkDestroySampler(logicalDevice_, textureSampler_, nullptr);
         vkDestroyImageView(logicalDevice_, textureImageView_, nullptr);
         vkDestroyImage(logicalDevice_, textureImage_, nullptr);
@@ -833,6 +865,7 @@ private:
             throw std::runtime_error("failed to begin recording command buffer!");
         }
 
+        
         VkRenderPassBeginInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassInfo.renderPass = renderPass;
@@ -840,9 +873,12 @@ private:
         renderPassInfo.renderArea.offset = {0, 0};
         renderPassInfo.renderArea.extent = swapchainExtent_; //TODO get swapchain extent
 
-        VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-        renderPassInfo.clearValueCount = 1;
-        renderPassInfo.pClearValues = &clearColor;
+        std::array<VkClearValue, 2> clearValues{};
+        clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+        clearValues[1].depthStencil = {1.0f, 0};
+
+        renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+        renderPassInfo.pClearValues = clearValues.data();
 
         vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline_);//TODO get graphics pipeline

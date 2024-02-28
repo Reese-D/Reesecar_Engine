@@ -21,6 +21,8 @@ public:
                                            ,queue::QueueFamilyIndices indices);
     VkQueue getPresentDeviceQueue(VkDevice logicalDevice
                                           ,queue::QueueFamilyIndices indices);
+    VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
+    VkFormat findDepthFormat();
 
 private:
     static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, const std::vector<const char*> deviceExtensions);
@@ -36,8 +38,7 @@ private:
                                  ,queue::QueueFamilyIndices indices
                                  ,VkSurfaceKHR surface);
     static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
-    static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions);
-    
+    static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char*> deviceExtensions);            
     VkDevice logicalDevice_;
     VkPhysicalDevice physicalDevice_;
     queue::QueueFamilyIndices indices_;

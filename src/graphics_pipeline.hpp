@@ -9,14 +9,14 @@
 class graphics_pipeline
 {
 public:
-    graphics_pipeline(VkDevice device, VkFormat format, VkDescriptorSetLayout descriptorSetLayout);
+    graphics_pipeline(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkDescriptorSetLayout descriptorSetLayout);
     ~graphics_pipeline();
     VkRenderPass getRenderPass();
     VkPipeline getGraphicsPipeline();
     VkPipelineLayout getPipelineLayout();
 
     struct Vertex {
-        glm::vec2 pos;
+        glm::vec3 pos;
         glm::vec3 color;
         glm::vec2 textureCoordinate;
         
@@ -34,7 +34,7 @@ public:
 
             attributeDescriptions[0].binding = 0;
             attributeDescriptions[0].location = 0;
-            attributeDescriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+            attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
             attributeDescriptions[0].offset = offsetof(Vertex, pos);
 
             attributeDescriptions[1].binding = 0;

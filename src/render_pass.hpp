@@ -5,7 +5,7 @@ class render_pass
 {
 public:
     render_pass() = delete;
-    render_pass(VkDevice device, VkFormat swapChainImageFormat);
+    render_pass(VkDevice device, VkFormat swapChainImageFormat, VkFormat depthFormat);
     VkRenderPass getRenderPass();
     ~render_pass();
 private:

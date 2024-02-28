@@ -85,28 +85,29 @@ VkFormat swapchain::getImageFormat()
     return swapChainImageFormat_;
 }
 
-void swapchain::createFrameBuffers(VkRenderPass renderPass)
+void swapchain::createFrameBuffers(VkRenderPass renderPass, VkImageView depthImageView)
 {
     swapChainFramebuffers_.resize(swapChainImageViews_.size());
     
     for (size_t i = 0; i < swapChainImageViews_.size(); i++) {
-    VkImageView attachments[] = {
-        swapChainImageViews_[i]
-    };
+        std::array<VkImageView, 2> attachments = {
+            swapChainImageViews_[i],
+            depthImageView
+        };
 
-    VkFramebufferCreateInfo framebufferInfo{};
-    framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    framebufferInfo.renderPass = renderPass;
-    framebufferInfo.attachmentCount = 1;
-    framebufferInfo.pAttachments = attachments;
-    framebufferInfo.width = swapChainExtent_.width;
-    framebufferInfo.height = swapChainExtent_.height;
-    framebufferInfo.layers = 1;
+        VkFramebufferCreateInfo framebufferInfo{};
+        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        framebufferInfo.renderPass = renderPass;
+        framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+        framebufferInfo.pAttachments = attachments.data();
+        framebufferInfo.width = swapChainExtent_.width;
+        framebufferInfo.height = swapChainExtent_.height;
+        framebufferInfo.layers = 1;
 
-    if (vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &swapChainFramebuffers_[i]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create framebuffer!");
+        if (vkCreateFramebuffer(device_, &framebufferInfo, nullptr, &swapChainFramebuffers_[i]) != VK_SUCCESS) {
+            throw std::runtime_error("failed to create framebuffer!");
+        }
     }
-}
 }
 
 swapchain::~swapchain()
@@ -125,13 +126,13 @@ swapchain::~swapchain()
     vkDestroySwapchainKHR(device_, swapChain_, nullptr);
 }
 
-VkImageView swapchain::createImageView(VkImage image, VkFormat format) {
+VkImageView swapchain::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
-    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    viewInfo.subresourceRange.aspectMask = aspectFlags;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = 1;
     viewInfo.subresourceRange.baseArrayLayer = 0;
@@ -149,12 +150,12 @@ void swapchain::createImageViews() {
     swapChainImageViews_.resize(swapChainImages_.size());
 
     for (size_t i = 0; i < swapChainImages_.size(); i++) {
-        swapChainImageViews_[i] = createImageView(swapChainImages_[i], swapChainImageFormat_);
+        swapChainImageViews_[i] = createImageView(swapChainImages_[i], swapChainImageFormat_, VK_IMAGE_ASPECT_COLOR_BIT);
     }
 }
 
 VkImageView swapchain::createTextureImageView(VkImage textureImage) {
-    return createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB);
+    return createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 }
 
 VkSurfaceFormatKHR swapchain::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
