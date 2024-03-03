@@ -41,6 +41,8 @@ class HelloTriangleApplication {
 public:
     void run()
     {
+
+        setupVertices();
         glfwWindow_ = initWindow();
 
         //printAvailableExtensions();
@@ -150,29 +152,41 @@ private:
     graphics_pipeline* pMyGraphicsPipeline_;
     device* pMyDevice_;
 
-    //temporary constant to test shader
-    const std::vector<graphics_pipeline::Vertex> vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}},
-
-        {{-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-        {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
-        {{-0.5f, 0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}}
-    };
-
-    const std::vector<uint16_t> indices = {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4
-    };
+    std::vector<graphics_pipeline::Vertex> vertices;
+    std::vector<uint16_t> indices;
 
     struct UniformBufferObject {
         alignas(16) glm::mat4 model;
         alignas(16) glm::mat4 view;
         alignas(16) glm::mat4 projection;
     };
+
+    void setupVertices()
+    {
+        float startingValue = -1.0f, x = -1.0f, y = -1.0f;
+        int gridSize = 10;
+        float increment = 2.0f / gridSize ;
+        int index = 0;
+        for(int i = 0; i < gridSize; i++){
+            for(int j = 0; j < gridSize; j++){
+                vertices.push_back({{x, y, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+                vertices.push_back({{x+increment, y, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}});
+                vertices.push_back({{x+increment, y+increment, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}});
+                vertices.push_back({{x, y+increment, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}});
+
+                indices.push_back(0+index);
+                indices.push_back(1+index);
+                indices.push_back(2+index);
+                indices.push_back(2+index);
+                indices.push_back(3+index);
+                indices.push_back(0+index);
+                index += 4;
+                x += increment;
+            }
+            y += increment;
+            x = startingValue;
+        }
+    }
 
     void createDepthResources() {
         createImage(swapchainExtent_.width, swapchainExtent_.height, depthFormat_, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_, depthImageMemory_);
