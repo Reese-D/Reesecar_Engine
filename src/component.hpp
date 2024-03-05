@@ -1,5 +1,5 @@
 #pragma once
-
+#include <stdint.h>
 //example usage
 //auto test = new position();
 //auto compTest = Component(test);
@@ -8,8 +8,7 @@
 class Component
 {
 private:
-    const std::type_info& type;
-        //We need this BS as a wrapper around our data, to be used in the Typed BS
+    //We need this BS as a wrapper around our data, to be used in the Typed BS
     struct bullshit
     {
     public:
@@ -33,25 +32,38 @@ private:
 
         virtual ~TBullshit() override
         {
-            std::cout << "deleting TBullshit" << std::endl;
             //TADA, we can actually free it here
             ((T*)data_)->~T();
         }
     };
+    
     //...But we don't reference TBullshit, we only reference bullshit, so Component doesn't have to be typed
     bullshit* data_;
 public:
+    
     //our constructor however is typed, so we can use the TBullshit constructor which knows how to clean up
     //properly
     template<class T> Component(T* value)
-        :type(typeid(T))
-        ,data_(new TBullshit<T>(value))
+        :data_(new TBullshit<T>(value))
     {
     };
 
+    Component(Component& cpy) = delete;
+    
+    Component(Component&& moving)
+        :data_(nullptr)
+    {
+        data_ = moving.data_;
+        moving.data_ = nullptr;
+    };
+
+    void* getData() const
+    {
+        return data_->data_;   
+    }
+
     ~Component()
     {
-        std::cout << "deleting Component" << std::endl;
         delete data_;
     };
 };

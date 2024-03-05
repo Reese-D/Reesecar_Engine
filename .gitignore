@@ -13,4 +13,5 @@ VulkanTest
 *\.o
 *\.d
 main
+test
 *.spv
