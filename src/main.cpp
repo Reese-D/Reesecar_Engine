@@ -29,9 +29,11 @@ int main()
     auto unitMovementSpeed = new movementSpeedComponent();
     unitMovementSpeed->movementSpeed = 10.0f;
     auto unitMesh = new meshComponent();
-    unitMesh->vertices.push_back({{-0.05f, -0.05f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
-    unitMesh->vertices.push_back({{0.05f, -0.05f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}});
-    unitMesh->vertices.push_back({{0.05f, 0.05f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}});
+
+    //TODO make shader for non-textured entities
+    unitMesh->vertices.push_back({{-0.05f, -0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+    unitMesh->vertices.push_back({{0.05f, -0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+    unitMesh->vertices.push_back({{0.05f, 0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
     unitMesh->indices.push_back(0);
     unitMesh->indices.push_back(1);
     unitMesh->indices.push_back(2);
@@ -46,9 +48,9 @@ int main()
     buildingGridPosition->x = 4;
     buildingGridPosition->y = 5;
     auto buildingMesh = new meshComponent();
-    buildingMesh->vertices.push_back({{-0.10f, -0.10f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}});
-    buildingMesh->vertices.push_back({{-0.05f, -0.10f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}});
-    buildingMesh->vertices.push_back({{-0.05f, -0.05f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}});
+    buildingMesh->vertices.push_back({{-0.10f, -0.10f, 0.01f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}});
+    buildingMesh->vertices.push_back({{-0.05f, -0.10f, 0.01f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}});
+    buildingMesh->vertices.push_back({{-0.05f, -0.05f, 0.01f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}});
     buildingMesh->indices.push_back(0);
     buildingMesh->indices.push_back(1);
     buildingMesh->indices.push_back(2);

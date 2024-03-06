@@ -51,12 +51,15 @@ public:
     void updateMeshes()
     {
         auto componentIterPair = registry_->getComponentIterators<meshComponent>();
-        
+        uint32_t counter = 0;
         for(auto it = componentIterPair.first; it != componentIterPair.second; it++){
             const auto meshVertices = ((meshComponent*)(*it).getData())->vertices;
             const auto meshIndices = ((meshComponent*)(*it).getData())->indices;
             vertices.insert(vertices.end(), meshVertices.begin(), meshVertices.end());
-            indices.insert(indices.end(), meshIndices.begin(), meshIndices.end());
+            for(unsigned int i = 0; i < meshIndices.size(); i++){
+                indices.push_back(meshIndices[i] + counter);
+            }
+            counter += meshVertices.size();
         }
     }
     
