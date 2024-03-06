@@ -32,10 +32,10 @@ public:
         return entities[entityID];
     }
 
-    template<class T> std::vector<Component>::iterator getComponentsIterator()
+    //returns a pair composed of the begin and end iterator
+    template<class T> std::pair<std::vector<Component>::iterator, std::vector<Component>::iterator> getComponentIterators()
     {
-        
-        return components[typeid(T).name()].begin();
+        return std::make_pair(components[typeid(T).name()].begin(), components[typeid(T).name()].end());
     }
     
     template<class T> const std::vector<Component>& getComponents()
