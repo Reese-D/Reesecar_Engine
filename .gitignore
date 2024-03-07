@@ -15,3 +15,4 @@ VulkanTest
 main
 test
 *.spv
+.cache
