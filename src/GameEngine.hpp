@@ -108,8 +108,10 @@ public:
         createTextureImage();
         textureImageView_ = pMySwapchain_->createTextureImageView(textureImage_);
         createTextureSampler();
-        createVertexBuffer();
-        createIndexBuffer();
+        
+        createBufferWithStaging(&vertexBuffer_, &vertexBufferMemory_, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertices);
+        createBufferWithStaging(&indexBuffer_, &indexBufferMemory_, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices);
+        
         createUniformBuffers();
         createDescriptorPool();
         createDescriptorSets();
@@ -467,10 +469,9 @@ private:
 
     }
 
-    void createVertexBuffer()
+    template<typename T> void createBufferWithStaging(VkBuffer* buffer, VkDeviceMemory* memory, VkBufferUsageFlags flags_for_dst_transfer, std::vector<T>& bufData)
     {
-
-        VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+        VkDeviceSize bufferSize = sizeof(bufData[0]) * bufData.size();
 
         VkBuffer stagingBuffer;
         VkDeviceMemory stagingBufferMemory;
@@ -485,54 +486,19 @@ private:
         //put it in CPU accessible memory
         void* data;
         vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, vertices.data(), (size_t) bufferSize);
+        memcpy(data, bufData.data(), (size_t) bufferSize);
         vkUnmapMemory(logicalDevice_, stagingBufferMemory);
 
         //now create another buffer, this time for the GPU only (not cpu accessible)
         createBuffer(bufferSize
-                     ,VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+                     ,VK_BUFFER_USAGE_TRANSFER_DST_BIT | flags_for_dst_transfer
                      ,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-                     ,vertexBuffer_
-                     ,vertexBufferMemory_);
+                     ,*buffer
+                     ,*memory);
 
-        //copy the data from staging to vertex and cleanup the staging buffer (vertex cleaned up later)
-        copyBuffer(stagingBuffer, vertexBuffer_, bufferSize);
+        //copy the data from staging to supplied and cleanup the staging buffer (caller must clean up buffer later)
+        copyBuffer(stagingBuffer, *buffer, bufferSize);
         
-        vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
-        vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
-    }
-
-    void createIndexBuffer()
-    {
-
-        //TODO refactor this and vertex buffer to something more common, they're basically identical with the exception of the notes listed below
-        //EDIT: Alternative, use a single VkBuffer to make things more efficient. See here: https://developer.nvidia.com/vulkan-memory-management
-        //Also see here at the bottom: https://vulkan-tutorial.com/en/Vertex_buffers/Index_buffer
-        VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();//NOTE: Different than vertex buffer, need to pass in the indices/vertices
-
-        VkBuffer stagingBuffer;
-        VkDeviceMemory stagingBufferMemory;
-
-        createBuffer(bufferSize
-                     ,VK_BUFFER_USAGE_TRANSFER_SRC_BIT
-                     ,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-                     ,stagingBuffer
-                     ,stagingBufferMemory);
-
-        void* data;
-        vkMapMemory(logicalDevice_, stagingBufferMemory, 0, bufferSize, 0, &data);
-        memcpy(data, indices.data(), (size_t) bufferSize);
-        vkUnmapMemory(logicalDevice_, stagingBufferMemory);
-
-        createBuffer(bufferSize
-                     ,VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT //NOTE: Different than vertex buffer (for refactoring), would need to pass in this bit
-                     ,VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-                     ,indexBuffer_ //NOTE: Different buffer
-                     ,indexBufferMemory_); //NOTE: Different memory
-
-        
-        copyBuffer(stagingBuffer, indexBuffer_, bufferSize);//NOTE: Different buffer
-
         vkDestroyBuffer(logicalDevice_, stagingBuffer, nullptr);
         vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
     }
