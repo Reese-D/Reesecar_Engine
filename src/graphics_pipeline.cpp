@@ -1,7 +1,9 @@
 #include "graphics_pipeline.hpp"
+#include "components/drawing.hpp"
 #include <stdexcept>
 #include <iostream>
 #include <fstream>
+#include <vulkan/vulkan_core.h>
 
 graphics_pipeline::graphics_pipeline(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkDescriptorSetLayout descriptorSetLayout)
     :device_(device)
@@ -58,11 +60,11 @@ void graphics_pipeline::createGraphicsPipeline() {
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    auto bindingDescription = Vertex::getBindingDescription();
-    auto attributeDescriptions = Vertex::getAttributeDescriptions();
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    auto bindingDescriptions = getBindingDescriptions();
+    auto attributeDescriptions = getAttributeDescriptions();
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
     
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
@@ -163,6 +165,64 @@ void graphics_pipeline::createGraphicsPipeline() {
     vkDestroyShaderModule(device_, fragShaderModule, nullptr);
     vkDestroyShaderModule(device_, vertShaderModule, nullptr);
 }
+
+VkVertexInputBindingDescription graphics_pipeline::generateVertexInputBindingDescription(
+                                                              uint32_t binding,
+                                                              uint32_t stride,
+                                                              VkVertexInputRate inputRate)
+{
+    VkVertexInputBindingDescription vInputBindDescription {};
+    vInputBindDescription.binding = binding;
+    vInputBindDescription.stride = stride;
+    vInputBindDescription.inputRate = inputRate;
+    return vInputBindDescription;
+}
+
+
+VkVertexInputAttributeDescription graphics_pipeline::generateVertexInputAttributeDescription(
+                                                                                             uint32_t binding,
+                                                                                             uint32_t location,
+                                                                                             VkFormat format,
+                                                                                             uint32_t offset)
+{
+    VkVertexInputAttributeDescription vInputAttribDescription {};
+    vInputAttribDescription.location = location;
+    vInputAttribDescription.binding = binding;
+    vInputAttribDescription.format = format;
+    vInputAttribDescription.offset = offset;
+    return vInputAttribDescription;
+}
+
+std::vector<VkVertexInputBindingDescription> graphics_pipeline::getBindingDescriptions()
+{
+    std::vector<VkVertexInputBindingDescription> bindingDescriptions = {
+        generateVertexInputBindingDescription(0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX),
+        generateVertexInputBindingDescription(1, sizeof(instance2DComponent), VK_VERTEX_INPUT_RATE_INSTANCE),
+    };
+    
+    return bindingDescriptions;
+}
+
+std::vector<VkVertexInputAttributeDescription> graphics_pipeline::getAttributeDescriptions() {
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions = {
+        //vertex data
+        generateVertexInputAttributeDescription(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)),
+        generateVertexInputAttributeDescription(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)),
+        generateVertexInputAttributeDescription(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, textureCoordinate)),
+
+        
+        //instance data
+        generateVertexInputAttributeDescription(1, 3, VK_FORMAT_R32G32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, position)),
+        generateVertexInputAttributeDescription(1, 4, VK_FORMAT_R8_UINT, sizeof(Vertex) + offsetof(instance2DComponent, depthLevel)),
+        generateVertexInputAttributeDescription(1, 5, VK_FORMAT_R32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, rotation)),
+        generateVertexInputAttributeDescription(1, 6, VK_FORMAT_R32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, scale)),
+        
+    };
+            
+    return attributeDescriptions;
+}
+
+
 
 VkShaderModule graphics_pipeline::createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};

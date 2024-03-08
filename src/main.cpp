@@ -29,14 +29,22 @@ int main()
     auto unitMovementSpeed = new movementSpeedComponent();
     unitMovementSpeed->movementSpeed = 10.0f;
     auto unitMesh = new meshComponent();
-
     //TODO make shader for non-textured entities
-    unitMesh->vertices.push_back({{-0.05f, -0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
-    unitMesh->vertices.push_back({{0.05f, -0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
-    unitMesh->vertices.push_back({{0.05f, 0.05f, 0.01f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+    unitMesh->vertices.push_back({{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+    unitMesh->vertices.push_back({{0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
+    unitMesh->vertices.push_back({{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}});
     unitMesh->indices.push_back(0);
     unitMesh->indices.push_back(1);
     unitMesh->indices.push_back(2);
+
+    for(int i = 0; i < 3; i++){
+        auto instance = new instance2DComponent();
+        instance->position = {0.0f + i, 0.0f};
+        instance->depthLevel = 1;
+        instance->rotation = 90.0f * (float)i;
+        instance->scale = 1.0f;
+        registry->addComponent(instance, unitEntityID);
+    }
 
     registry->addComponent(unitGridPosition, unitEntityID); //unused, to add with instancing
     registry->addComponent(unitMovementSpeed, unitEntityID);//TODO add support

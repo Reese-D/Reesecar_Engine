@@ -46,6 +46,7 @@ public:
         :registry_(registry)
     {
         updateMeshes();
+        updateInstances();
     }
 
     void updateMeshes()
@@ -60,6 +61,14 @@ public:
                 indices.push_back(meshIndices[i] + counter);
             }
             counter += meshVertices.size();
+        }
+    }
+
+    void updateInstances()
+    {
+        auto componentIterPair = registry_->getComponentIterators<instance2DComponent>();
+        for(auto it = componentIterPair.first; it != componentIterPair.second; it++){
+            instances.push_back(*((instance2DComponent*)(*it).getData()));
         }
     }
     
@@ -110,6 +119,7 @@ public:
         createTextureSampler();
         
         createBufferWithStaging(&vertexBuffer_, &vertexBufferMemory_, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertices);
+        createBufferWithStaging(&instanceBuffer_, &instanceBufferMemory_, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, instances);
         createBufferWithStaging(&indexBuffer_, &indexBufferMemory_, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indices);
         
         createUniformBuffers();
@@ -148,7 +158,10 @@ private:
     VkDeviceMemory vertexBufferMemory_;
     VkBuffer indexBuffer_;
     VkDeviceMemory indexBufferMemory_;
+    VkBuffer instanceBuffer_;
+    VkDeviceMemory instanceBufferMemory_;
 
+    
     VkImage textureImage_;
     VkImageView textureImageView_;
     VkDeviceMemory textureImageMemory_;
@@ -178,6 +191,7 @@ private:
 
     std::vector<graphics_pipeline::Vertex> vertices;
     std::vector<uint16_t> indices;
+    std::vector<instance2DComponent> instances;
 
     struct UniformBufferObject {
         alignas(16) glm::mat4 model;
@@ -753,7 +767,6 @@ private:
 
     void cleanup(VkSurfaceKHR surface, VkInstance instance)
     {
-
         delete pMySwapchain_;
         vkDestroyImageView(logicalDevice_, depthImageView_, nullptr);
         vkDestroyImage(logicalDevice_, depthImage_, nullptr);
@@ -769,12 +782,15 @@ private:
             vkFreeMemory(logicalDevice_, uniformBuffersMemory_[i], nullptr);
         }
 
-        
         vkDestroyBuffer(logicalDevice_, indexBuffer_, nullptr);
         vkFreeMemory(logicalDevice_, indexBufferMemory_, nullptr);
         
         vkDestroyBuffer(logicalDevice_, vertexBuffer_, nullptr);
         vkFreeMemory(logicalDevice_, vertexBufferMemory_, nullptr);
+
+        vkDestroyBuffer(logicalDevice_, instanceBuffer_, nullptr);
+        vkFreeMemory(logicalDevice_, instanceBufferMemory_, nullptr);
+        
         
         delete pMyGraphicsPipeline_;
         std::cout << "destroying command pool" << std::endl;
@@ -872,9 +888,9 @@ private:
         scissor.extent = swapchainExtent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer_};
         VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vertexBuffer_, offsets);
+        vkCmdBindVertexBuffers(commandBuffer, 1, 1, &instanceBuffer_, offsets);
         
         vkCmdBindIndexBuffer(commandBuffer, indexBuffer_, 0, VK_INDEX_TYPE_UINT16);
         
