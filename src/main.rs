@@ -1,13 +1,10 @@
 extern crate pretty_env_logger;
 #[macro_use] extern crate log;
 
-use winit::{
-    event,
-    event_loop,
-    window,
-};
-
+use winit::event;
 use ash;
+
+mod window_utility;
 
 struct Engine
 {
@@ -23,7 +20,7 @@ impl Engine {
 	pretty_env_logger::init();
 	info!("creating engine instance");
 	
-	let (event_loop, window) = Engine::create_window();
+	let (event_loop, window) = window_utility::create_window();
 	let instance = Engine::create_instance();
 
 	//Will likely be moved into main loop in the future
@@ -48,18 +45,6 @@ impl Engine {
 	Self{instance}
     }
     
-    fn create_window() -> (event_loop::EventLoop<()>, window::Window) {
-	let event_loop = event_loop::EventLoop::new().unwrap();
-	let window = window::WindowBuilder::new()
-	    .with_title("Glorious ReeseCar Engine")
-	    .build(&event_loop)
-	    .unwrap();
-
-	event_loop.set_control_flow(event_loop::ControlFlow::Poll);
-
-	return (event_loop, window);
-    }
-
     fn create_instance() -> ash::Instance {
 	let entry = ash::Entry::linked();
 	//TODO pull in app_name as parameter or something
