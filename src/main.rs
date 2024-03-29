@@ -7,9 +7,11 @@ use winit::{
     window,
 };
 
+use ash;
+
 struct Engine
 {
-
+    instance: ash::Instance
 }
 
 impl Engine {
@@ -22,9 +24,7 @@ impl Engine {
 	info!("creating engine instance");
 	
 	let (event_loop, window) = Engine::create_window();
-	Engine::init_vulkan();
-	Engine::main_loop();
-	Engine::cleanup();
+	let instance = Engine::create_instance();
 
 	//Will likely be moved into main loop in the future
 	let _ = event_loop.run(move |window_event, elwt| {
@@ -45,7 +45,7 @@ impl Engine {
 	    };
 	});
 	
-	Self{}
+	Self{instance}
     }
     
     fn create_window() -> (event_loop::EventLoop<()>, window::Window) {
@@ -60,16 +60,41 @@ impl Engine {
 	return (event_loop, window);
     }
 
-    fn init_vulkan(){
+    fn create_instance() -> ash::Instance {
+	let entry = ash::Entry::linked();
+	//TODO pull in app_name as parameter or something
+	let app_name = std::ffi::CString::new("Example").expect("Couldn't create application name");
+	let engine_name = std::ffi::CString::new("ReeseCar Engine").expect("Couldn't create engine name");
+	
+	let app_info = ash::vk::ApplicationInfo::builder()
+	    .application_version(ash::vk::make_api_version(0,1,0,0))
+	    .application_name(&app_name)
+	    .engine_name(&engine_name)
+	    .build();
 
+	let create_info = ash::vk::InstanceCreateInfo {
+	    p_application_info: &app_info,
+	    ..Default::default()
+	};
+	unsafe {
+	    let instance = entry
+		.create_instance(&create_info, None)
+		.expect("Instance creation error");
+	    return instance;
+	}
     }
 
     fn main_loop(){
 
     }
+}
 
-    fn cleanup(){
-	info!("engine killed, cleaning up");
+impl Drop for Engine {
+    fn drop(&mut self) {
+	unsafe {
+	    info!("Engine destroyed, cleaning up");
+	    self.instance.destroy_instance(None);
+	}
     }
 }
 
