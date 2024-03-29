@@ -4,7 +4,8 @@ extern crate pretty_env_logger;
 use winit::event;
 use ash;
 
-mod window_utility;
+mod utility;
+use utility::window_utility;
 
 struct Engine
 {
@@ -55,6 +56,7 @@ impl Engine {
 	    .application_version(ash::vk::make_api_version(0,1,0,0))
 	    .application_name(&app_name)
 	    .engine_name(&engine_name)
+	    .api_version(ash::vk::make_api_version(0,1,0,0))
 	    .build();
 
 	let create_info = ash::vk::InstanceCreateInfo {
