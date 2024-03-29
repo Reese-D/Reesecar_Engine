@@ -7,12 +7,9 @@
 # projectile files
 .projectile
 
-
 # build files
-VulkanTest
-*\.o
-*\.d
-main
-test
 *.spv
 .cache
+
+# Added by cargo
+/target
