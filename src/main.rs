@@ -39,7 +39,6 @@ impl<'a> EngineBuilder<'a> {
     pub fn build(&self) -> Engine {
 	Engine::new(&self.layers)
     }
-	
 }
 
 impl Engine {
@@ -90,14 +89,22 @@ impl Engine {
 	    },
 	    None => panic!("Could not run, event loop has no value!")
 	}
+
+	//our eventloop is now out of scope and gets destroyed. Engine.event_loop is now None
     }
-    
-    pub fn check_validation_layers(entry: &ash::Entry, layers: &Vec<&str>) -> bool {
+
+    pub fn print_validation_layers(&self) {
+	Engine::operate_over_validation_layers(&self.entry, &mut |name| {
+	    info!("{name}");
+	});
+    }
+
+    pub fn operate_over_validation_layers(entry: &ash::Entry, f: &mut dyn FnMut(&str)) {
 	let properties = entry.enumerate_instance_layer_properties();
-	let mut count = 0;	
+	
 	if properties.is_err() {
 	    warn!("Cannot enable validation layers, enumerate_instance_layer_properties failed");
-	    return false;
+	    return;
 	}
 	else {
 	    properties
@@ -105,17 +112,23 @@ impl Engine {
 		.iter()
 		.for_each(|layer| {
 		    let layer_name = unsafe { std::ffi::CStr::from_ptr(layer.layer_name.as_ptr()) };
-		    info!("layer found: {0:#?}", layer_name);
-		    let result: bool = layers
-			.iter()
-			.any(|name|
-			     name == &layer_name.to_str().expect("Couldn't retreive layer name ptr"));
-		    if result {
-			count += 1;
-		    }
+		    f(&layer_name.to_str().expect("Couldn't retreive layer name ptr"));
 		});
-	    count >= layers.len()
 	}
+    }
+
+    pub fn check_validation_layers(entry: &ash::Entry, layers: &Vec<&str>) -> bool {
+	let mut count = 0;
+	Engine::operate_over_validation_layers(entry, &mut |layer_name| {
+	    let result: bool = layers
+		.iter()
+		.any(|name| name == &layer_name);
+	    if result {
+		count += 1;
+	    }
+	});
+
+	count >= layers.len()
     }
     
     fn create_instance(layers: &Option<Vec<&str>>) -> (ash::Entry, ash::Instance) {
@@ -187,6 +200,9 @@ fn main() {
     let mut reese_car_engine = Engine::builder()
         .enable_validation_layers(layers)
         .build();
-
+    info!("-----------VALIDATION LAYERS-----------");
+    reese_car_engine.print_validation_layers();
+    info!("---------------------------------------");
     reese_car_engine.run();
 }
+
