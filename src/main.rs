@@ -28,7 +28,8 @@ struct Engine
     _debug_util_create_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>,
     
     debug_utils: Option<ash::extensions::ext::DebugUtils>,
-    debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>
+    debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>,
+    physical_device: ash::vk::PhysicalDevice
 }
 
 #[derive(Default)]
@@ -36,12 +37,13 @@ struct EngineBuilder<'a>
 {
     layers: Option<Vec<&'a str>>,
     extensions: Option<Vec<String>>,
-    debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT>
+    debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT>,
+    device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>
 }
 
 impl<'a> EngineBuilder<'a> {
     pub fn new() -> Self {
-	return EngineBuilder{layers: None, extensions: None, debug_util: None};
+	return EngineBuilder{layers: None, extensions: None, debug_util: None, device_filter: None};
     }
 
     pub fn enable_validation_layers(&mut self, layers: Vec<&'a str>) -> &mut Self {
@@ -50,13 +52,18 @@ impl<'a> EngineBuilder<'a> {
 	return self
     }
 
+    pub fn set_device_filter(&mut self, device_filter: fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool) -> &mut Self{
+	self.device_filter = Some(device_filter);
+	self
+    }
+
     pub fn enable_extensions(&mut self, extensions: Vec<String>) -> &mut Self {
 	self.extensions = Some(extensions);
 	self
     }
 
     pub fn build(&mut self) -> Engine {
-	Engine::new(&self.layers, &self.extensions, self.debug_util)
+	Engine::new(&self.layers, &self.extensions, self.debug_util, self.device_filter)
     }
 }
 
@@ -66,7 +73,7 @@ impl Engine {
 	EngineBuilder::new()
     }
 
-    fn new(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>) -> Self {
+    fn new(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> Self {
 	if std::env::var("RUST_LOG").is_err() {
 	    std::env::set_var("RUST_LOG", "info")
 	}
@@ -88,13 +95,17 @@ impl Engine {
 		debug_util_messenger = None;
 	    }
 	}
+
+	let physical_device = Engine::pick_physical_device(&instance, device_filter);
+	
 	Self{instance
 	     ,entry
 	     ,window
 	     ,event_loop: Some(event_loop)
 	     ,_debug_util_create_info: debug_util_info
 	     ,debug_utils
-	     ,debug_util_messenger_ext: debug_util_messenger}
+	     ,debug_util_messenger_ext: debug_util_messenger
+	     ,physical_device}
     }
 
     pub fn run(&mut self) {
@@ -174,6 +185,30 @@ impl Engine {
 	    let debug_util_messenger = debug_util.create_debug_utils_messenger(debug_create_info, None).expect("unable to create debug utils messenger");
 	    return (debug_util, debug_util_messenger);
 	}
+    }
+    
+    fn pick_physical_device(instance: &ash::Instance, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> ash::vk::PhysicalDevice{
+	unsafe {
+	    let devices = instance.enumerate_physical_devices().expect("Couldn't enumerate physical devices on instance");
+	    match device_filter {
+		Some(filter) => {
+		    for device in devices {
+			let features = instance.get_physical_device_features(device);
+			let properties = instance.get_physical_device_properties(device);
+			if filter(&features, &properties){
+			    debug!("Chosen physical device: {0:#?}", properties);
+			    return device;
+			}
+		    };
+		},
+		None => {
+		    debug!("Chosen physical device: {0:#?}",instance.get_physical_device_properties(devices[0])); 
+		    return devices[0];
+		}
+	    }
+	}
+
+	panic!("No suitable vulkan physical device could be found that met the minimum necessary requirements");
     }
     
     fn create_instance(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>)
@@ -313,11 +348,23 @@ impl Drop for Engine {
     }
 }
 
+
+//Example program
 fn main() {
+
+    //Note, you can set the rust_log environment variable programmatically here if you want
+    //EX: std::env::set_var("RUST_LOG", "info")
+    //by default engine will set this to info if no environment variable is specified
+    
     let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];    
     let mut reese_car_engine = Engine::builder()
         .enable_validation_layers(layers)
         .enable_extensions(vec![String::from("VK_EXT_debug_utils")])
+        .set_device_filter(|features, properties| {
+	    info!("shader: {0}, device type: {1:#?}", features.geometry_shader, properties.device_type);
+	    return properties.device_type == ash::vk::PhysicalDeviceType::DISCRETE_GPU
+		&& features.geometry_shader == vk::TRUE;
+	})
         .build();
 
     info!("-----------VALIDATION LAYERS-----------");
@@ -326,4 +373,8 @@ fn main() {
     
     reese_car_engine.run();
 }
+
+
+
+
 
