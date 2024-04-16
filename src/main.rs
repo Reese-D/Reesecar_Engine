@@ -29,7 +29,8 @@ struct Engine
     
     debug_utils: Option<ash::extensions::ext::DebugUtils>,
     debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>,
-    physical_device: ash::vk::PhysicalDevice
+    physical_device: ash::vk::PhysicalDevice,
+    logical_device: ash::Device
 }
 
 #[derive(Default)]
@@ -97,6 +98,16 @@ impl Engine {
 	}
 
 	let physical_device = Engine::pick_physical_device(&instance, device_filter);
+
+	//for now just finid any queue that supports graphics. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
+	let queue_create_info = Engine::get_physical_device_queue_info(&instance, &physical_device, |queue_family_properties| {
+	    queue_family_properties.iter().position(|queue_family| {
+		queue_family.queue_flags.contains(ash::vk::QueueFlags::GRAPHICS)
+	    }).unwrap() as u32
+	});
+
+	
+	let logical_device = Engine::get_logical_device(&instance, &physical_device, queue_create_info);
 	
 	Self{instance
 	     ,entry
@@ -105,7 +116,8 @@ impl Engine {
 	     ,_debug_util_create_info: debug_util_info
 	     ,debug_utils
 	     ,debug_util_messenger_ext: debug_util_messenger
-	     ,physical_device}
+	     ,physical_device,
+	     logical_device}
     }
 
     pub fn run(&mut self) {
@@ -186,7 +198,39 @@ impl Engine {
 	    return (debug_util, debug_util_messenger);
 	}
     }
-    
+
+    fn get_physical_device_queue_info(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> ash::vk::DeviceQueueCreateInfo {
+	let index: u32;
+	unsafe {
+	    index = filter(instance.get_physical_device_queue_family_properties(*physical_device));
+	}
+
+	//TODO support multiple queues with varying priority
+	let priority = [1.0f32];
+	return ash::vk::DeviceQueueCreateInfo::builder()
+				 .queue_family_index(index)
+				 .queue_priorities(&priority)
+				 .build();
+
+    }
+
+    fn get_logical_device(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, queue_create_info: ash::vk::DeviceQueueCreateInfo) -> ash::Device {
+
+	//TODO add support to fill out device features
+	let device_features = ash::vk::PhysicalDeviceFeatures::builder().build();
+
+	let queue_create_infos = [queue_create_info];
+	let device_create_info = ash::vk::DeviceCreateInfo::builder()
+	    .queue_create_infos(&queue_create_infos)
+	    .enabled_features(&device_features)
+	    .build();
+
+	unsafe {
+	    return instance.create_device(*physical_device, &device_create_info, None).expect("Unable to create vulkan logical device");
+	}
+
+    }
+    //TODO: consider failing if multiple devices match instead of just returning the first, or adding future support to utilize multiple GPU's
     fn pick_physical_device(instance: &ash::Instance, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> ash::vk::PhysicalDevice{
 	unsafe {
 	    let devices = instance.enumerate_physical_devices().expect("Couldn't enumerate physical devices on instance");
@@ -342,7 +386,7 @@ impl Drop for Engine {
 		},
 		None => {}
 	    };
-
+	    self.logical_device.destroy_device(None);
 	    self.instance.destroy_instance(None);
 	}
     }
