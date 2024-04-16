@@ -15,6 +15,11 @@ use ash::{
 mod utility;
 use utility::window_utility;
 
+struct Queues{
+    graphics_queue: ash::vk::Queue
+}
+
+
 struct Engine<'b>
 {
     instance: ash::Instance,
@@ -30,7 +35,8 @@ struct Engine<'b>
     debug_utils: Option<ash::ext::debug_utils::Instance>,
     debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>,
     physical_device: ash::vk::PhysicalDevice,
-    logical_device: ash::Device
+    logical_device: ash::Device,
+    queues: Queues
 }
 
 #[derive(Default)]
@@ -101,14 +107,20 @@ impl<'b> Engine<'b> {
 
 	let priority = [1.0f32];
 	//for now just finid any queue that supports graphics. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
-	let queue_create_info = Engine::get_physical_device_queue_info(&instance, &physical_device, &priority, |queue_family_properties| {
+	let (queue_create_info, index) = Engine::get_physical_device_queue_info(&instance, &physical_device, &priority, |queue_family_properties| {
 	    queue_family_properties.iter().position(|queue_family| {
 		queue_family.queue_flags.contains(ash::vk::QueueFlags::GRAPHICS)
 	    }).unwrap() as u32
 	});
-
 	
 	let logical_device = Engine::get_logical_device(&instance, &physical_device, queue_create_info);
+	
+	let queues;
+	unsafe {
+	    queues = Queues {
+		graphics_queue: logical_device.get_device_queue(index, 0)
+	    };
+	}
 	
 	Self{instance
 	     ,entry
@@ -118,7 +130,8 @@ impl<'b> Engine<'b> {
 	     ,debug_utils
 	     ,debug_util_messenger_ext: debug_util_messenger
 	     ,physical_device,
-	     logical_device}
+	     logical_device,
+	     queues}
     }
 
     pub fn run(&mut self) {
@@ -202,16 +215,18 @@ impl<'b> Engine<'b> {
 	}
     }
 
-    fn get_physical_device_queue_info<'prio>(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, priority: &'prio[f32], filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> ash::vk::DeviceQueueCreateInfo<'prio> {
+    fn get_physical_device_queue_info<'prio>(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, priority: &'prio[f32], filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> (ash::vk::DeviceQueueCreateInfo<'prio> , u32){
 	let index: u32;
 	unsafe {
 	    index = filter(instance.get_physical_device_queue_family_properties(*physical_device));
 	}
 
 	//TODO support multiple queues with varying priority
-	return ash::vk::DeviceQueueCreateInfo::default()
-				 .queue_family_index(index)
-				 .queue_priorities(priority);
+	let result = ash::vk::DeviceQueueCreateInfo::default()
+	    .queue_family_index(index)
+	    .queue_priorities(priority);
+
+	(result, index)
     }
 
     fn get_logical_device(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, queue_create_info: ash::vk::DeviceQueueCreateInfo) -> ash::Device {
