@@ -15,7 +15,7 @@ use ash::{
 mod utility;
 use utility::window_utility;
 
-struct Engine
+struct Engine<'b>
 {
     instance: ash::Instance,
     entry: ash::Entry,
@@ -25,24 +25,24 @@ struct Engine
     //probably don't need this? It seems fine to let this fall out of scope
     //however it's used in an unsafe block which may reference the memory, so lets keep it alive
     //until our app dies just in case.
-    _debug_util_create_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>,
+    _debug_util_create_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
     
-    debug_utils: Option<ash::extensions::ext::DebugUtils>,
+    debug_utils: Option<ash::ext::debug_utils::Instance>,
     debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>,
     physical_device: ash::vk::PhysicalDevice,
     logical_device: ash::Device
 }
 
 #[derive(Default)]
-struct EngineBuilder<'a>
+struct EngineBuilder<'a,'b>
 {
     layers: Option<Vec<&'a str>>,
     extensions: Option<Vec<String>>,
-    debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT>,
+    debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
     device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>
 }
 
-impl<'a> EngineBuilder<'a> {
+impl<'a,'b> EngineBuilder<'a,'b> {
     pub fn new() -> Self {
 	return EngineBuilder{layers: None, extensions: None, debug_util: None, device_filter: None};
     }
@@ -68,13 +68,13 @@ impl<'a> EngineBuilder<'a> {
     }
 }
 
-impl Engine {
+impl<'b> Engine<'b> {
 
-    fn builder<'a>() -> EngineBuilder<'a> {
+    fn builder<'a,'c>() -> EngineBuilder<'a,'c> {
 	EngineBuilder::new()
     }
 
-    fn new(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> Self {
+    fn new(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> Self {
 	if std::env::var("RUST_LOG").is_err() {
 	    std::env::set_var("RUST_LOG", "info")
 	}
@@ -84,7 +84,7 @@ impl Engine {
 	let (event_loop, window) = window_utility::create_window();
 	let (entry, instance) = Engine::create_instance(layers, extensions);
 
-	let debug_utils: Option<ash::extensions::ext::DebugUtils>;
+	let debug_utils: Option<ash::ext::debug_utils::Instance>;
 	let debug_util_messenger: Option<vk::DebugUtilsMessengerEXT>;
 	match debug_util_info {
 	    Some(debug_util_create_info) => {
@@ -99,8 +99,9 @@ impl Engine {
 
 	let physical_device = Engine::pick_physical_device(&instance, device_filter);
 
+	let priority = [1.0f32];
 	//for now just finid any queue that supports graphics. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
-	let queue_create_info = Engine::get_physical_device_queue_info(&instance, &physical_device, |queue_family_properties| {
+	let queue_create_info = Engine::get_physical_device_queue_info(&instance, &physical_device, &priority, |queue_family_properties| {
 	    queue_family_properties.iter().position(|queue_family| {
 		queue_family.queue_flags.contains(ash::vk::QueueFlags::GRAPHICS)
 	    }).unwrap() as u32
@@ -160,8 +161,10 @@ impl Engine {
     }
 
     pub fn operate_over_validation_layers(entry: &ash::Entry, f: &mut dyn FnMut(&str)) {
-	let properties = entry.enumerate_instance_layer_properties();
-	
+	let properties;
+	unsafe {
+	    properties = entry.enumerate_instance_layer_properties();
+	}
 	if properties.is_err() {
 	    warn!("Cannot enable validation layers, enumerate_instance_layer_properties failed");
 	    return;
@@ -191,39 +194,35 @@ impl Engine {
 	count >= layers.len()
     }
 
-    fn create_debug_util(entry: &ash::Entry, instance: &ash::Instance, debug_create_info: &vk::DebugUtilsMessengerCreateInfoEXT ) -> (ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT) {
-	let debug_util = ash::extensions::ext::DebugUtils::new(entry, instance);
+    fn create_debug_util(entry: &ash::Entry, instance: &ash::Instance, debug_create_info: &vk::DebugUtilsMessengerCreateInfoEXT ) -> (ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT) {
+	let debug_util = ash::ext::debug_utils::Instance::new(entry, instance);
 	unsafe {
 	    let debug_util_messenger = debug_util.create_debug_utils_messenger(debug_create_info, None).expect("unable to create debug utils messenger");
 	    return (debug_util, debug_util_messenger);
 	}
     }
 
-    fn get_physical_device_queue_info(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> ash::vk::DeviceQueueCreateInfo {
+    fn get_physical_device_queue_info<'prio>(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, priority: &'prio[f32], filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> ash::vk::DeviceQueueCreateInfo<'prio> {
 	let index: u32;
 	unsafe {
 	    index = filter(instance.get_physical_device_queue_family_properties(*physical_device));
 	}
 
 	//TODO support multiple queues with varying priority
-	let priority = [1.0f32];
-	return ash::vk::DeviceQueueCreateInfo::builder()
+	return ash::vk::DeviceQueueCreateInfo::default()
 				 .queue_family_index(index)
-				 .queue_priorities(&priority)
-				 .build();
-
+				 .queue_priorities(priority);
     }
 
     fn get_logical_device(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, queue_create_info: ash::vk::DeviceQueueCreateInfo) -> ash::Device {
 
 	//TODO add support to fill out device features
-	let device_features = ash::vk::PhysicalDeviceFeatures::builder().build();
+	let device_features = ash::vk::PhysicalDeviceFeatures::default();
 
 	let queue_create_infos = [queue_create_info];
-	let device_create_info = ash::vk::DeviceCreateInfo::builder()
+	let device_create_info = ash::vk::DeviceCreateInfo::default()
 	    .queue_create_infos(&queue_create_infos)
-	    .enabled_features(&device_features)
-	    .build();
+	    .enabled_features(&device_features);
 
 	unsafe {
 	    return instance.create_device(*physical_device, &device_create_info, None).expect("Unable to create vulkan logical device");
@@ -262,14 +261,14 @@ impl Engine {
 	let app_name = std::ffi::CString::new("Example").expect("Couldn't create application name");
 	let engine_name = std::ffi::CString::new("ReeseCar Engine").expect("Couldn't create engine name");
 	
-	let app_info = vk::ApplicationInfo::builder()
+	let app_info = vk::ApplicationInfo::default()
 	    .application_version(vk::make_api_version(0,1,0,0))
 	    .application_name(&app_name)
 	    .engine_name(&engine_name)
-	    .api_version(vk::make_api_version(0,1,0,0))
-	    .build();
+	    .api_version(vk::make_api_version(0,1,0,0));
 
-	let mut create_info_builder = vk::InstanceCreateInfo::builder()
+
+	let mut create_info = vk::InstanceCreateInfo::default()
 	    .application_info(&app_info);
 	
 	//declaring these outside the match blocks extends the lifetime to mimic the scope of create_info
@@ -289,7 +288,7 @@ impl Engine {
 		extension_name_ptr = extension_name.iter()
 		    .map(|item| item.as_ptr())
 		    .collect::<Vec<_>>();
-		create_info_builder = create_info_builder.enabled_extension_names(&extension_name_ptr);
+		create_info = create_info.enabled_extension_names(&extension_name_ptr);
 	    },
 	    None => { info!("No extensions provided, none will be enabled"); }
 	}
@@ -308,15 +307,13 @@ impl Engine {
 		let result: bool = Engine::check_validation_layers(&entry, &x);
 		
 		if result {
-		    create_info_builder = create_info_builder.enabled_layer_names(&layer_name_ptrs);
+		    create_info = create_info.enabled_layer_names(&layer_name_ptrs);
 		} else {
 		    warn!("Validation layers were supplied, but the machine doesn't support all of them, validation layers will not be enabled");
 		}
 	    },
 	    None => info!("Validation layers were not provided")
 	}
-
-	let create_info = create_info_builder.build();
 
 	unsafe {
 	    let instance = entry
@@ -353,7 +350,7 @@ impl Engine {
 	vk::FALSE
     }
 
-    pub fn setup_debug_messages() -> vk::DebugUtilsMessengerCreateInfoEXT {
+    pub fn setup_debug_messages() -> vk::DebugUtilsMessengerCreateInfoEXT<'b> {
 	let message_severity = vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
 	    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
 	    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
@@ -363,15 +360,14 @@ impl Engine {
 	    | vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
 	    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION;
 
-	vk::DebugUtilsMessengerCreateInfoEXT::builder()
+	vk::DebugUtilsMessengerCreateInfoEXT::default()
 	    .message_severity(message_severity)
 	    .message_type(message_type)
 	    .pfn_user_callback(Some(Engine::validation_layer_debug_callback))
-	    .build()
     }
 }
 
-impl Drop for Engine {
+impl<'b> Drop for Engine<'b> {
     fn drop(&mut self) {
 	unsafe {
 	    info!("Engine destroyed, cleaning up");
@@ -400,8 +396,9 @@ fn main() {
     //EX: std::env::set_var("RUST_LOG", "info")
     //by default engine will set this to info if no environment variable is specified
     
-    let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];    
-    let mut reese_car_engine = Engine::builder()
+    let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];
+    let mut engine_builder = Engine::builder();
+    let mut reese_car_engine = engine_builder
         .enable_validation_layers(layers)
         .enable_extensions(vec![String::from("VK_EXT_debug_utils")])
         .set_device_filter(|features, properties| {
