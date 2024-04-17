@@ -2,9 +2,7 @@ extern crate pretty_env_logger;
 #[macro_use] extern crate log;
 
 use winit::{
-    event_loop,
-    window,
-    event
+    event, event_loop, raw_window_handle::{HasDisplayHandle, HasWindowHandle}, window
 };
 
 use ash::{
@@ -36,7 +34,9 @@ struct Engine<'b>
     debug_util_messenger_ext: Option<vk::DebugUtilsMessengerEXT>,
     physical_device: ash::vk::PhysicalDevice,
     logical_device: ash::Device,
-    queues: Queues
+    queues: Queues,
+    surface: vk::SurfaceKHR,
+    surface_loader: ash::khr::surface::Instance
 }
 
 #[derive(Default)]
@@ -88,8 +88,12 @@ impl<'b> Engine<'b> {
 	info!("creating engine instance");
 	
 	let (event_loop, window) = window_utility::create_window();
-	let (entry, instance) = Engine::create_instance(layers, extensions);
 
+	let full_extensions = Engine::configure_extensions(&window, extensions);
+	
+	let (entry, instance) = Engine::create_instance(layers, &full_extensions);
+	let(surface, surface_loader) = Engine::get_surface(&entry, &instance, &window);
+	
 	let debug_utils: Option<ash::ext::debug_utils::Instance>;
 	let debug_util_messenger: Option<vk::DebugUtilsMessengerEXT>;
 	match debug_util_info {
@@ -129,9 +133,11 @@ impl<'b> Engine<'b> {
 	     ,_debug_util_create_info: debug_util_info
 	     ,debug_utils
 	     ,debug_util_messenger_ext: debug_util_messenger
-	     ,physical_device,
-	     logical_device,
-	     queues}
+	     ,physical_device
+	     ,logical_device
+	     ,queues
+	     ,surface
+	     ,surface_loader}
     }
 
     pub fn run(&mut self) {
@@ -167,6 +173,43 @@ impl<'b> Engine<'b> {
 	//our eventloop is now out of scope and gets destroyed. Engine.event_loop is now None
     }
 
+    fn configure_extensions(window: &window::Window, extensions: &Option<Vec<String>>) -> Vec<String> {
+	let extension_names =
+            ash_window::enumerate_required_extensions(window.display_handle().expect("Could not get display handle from window").as_raw())
+            .unwrap()
+            .to_vec();
+
+	let mut final_extension_list: Vec<String> = vec![];
+	for item in extension_names {
+	    unsafe {
+		let result = std::ffi::CStr::from_ptr(item).to_str().unwrap().to_string();
+		final_extension_list.push(result);
+	    }
+	}
+	
+	match extensions {
+	    Some(extension) => {
+		for item in extension {
+		    final_extension_list.push(item.clone());
+		}
+	    },
+	    None => { }
+	}
+
+	//seems to be included by ash_window automatically, but in case it's system dependent add if missing
+	let debug_util_name = ash::ext::debug_utils::NAME.to_str().unwrap().to_string();
+	if !final_extension_list.contains(&debug_util_name) {
+	    final_extension_list.push(debug_util_name);
+	}
+
+	debug!("Extensions:");
+	for extension in &final_extension_list {
+	    debug!("    {}", extension);
+	}
+
+	return final_extension_list;
+    }
+    
     pub fn print_validation_layers(&self) {
 	Engine::operate_over_validation_layers(&self.entry, &mut |name| {
 	    info!("{name}");
@@ -205,6 +248,21 @@ impl<'b> Engine<'b> {
 	});
 
 	count >= layers.len()
+    }
+
+    fn get_surface(entry: &ash::Entry, instance: &ash::Instance, window: &window::Window) -> (vk::SurfaceKHR, ash::khr::surface::Instance) {
+	let surface;
+	unsafe {
+	    surface = ash_window::create_surface(
+		&entry,
+		&instance,
+		window.display_handle().expect("could not retrieve window's display handle").as_raw(),
+		window.window_handle().expect("could not retrieve window's window handle").as_raw(),
+		None,
+            ).expect("Unable to create ash_window surface");
+	}
+	let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
+	return (surface, surface_loader);
     }
 
     fn create_debug_util(entry: &ash::Entry, instance: &ash::Instance, debug_create_info: &vk::DebugUtilsMessengerCreateInfoEXT ) -> (ash::ext::debug_utils::Instance, vk::DebugUtilsMessengerEXT) {
@@ -269,7 +327,7 @@ impl<'b> Engine<'b> {
 	panic!("No suitable vulkan physical device could be found that met the minimum necessary requirements");
     }
     
-    fn create_instance(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>)
+    fn create_instance(layers: &Option<Vec<&str>>, extensions: &Vec<String>)
 		       -> (ash::Entry, ash::Instance) {
 	let entry = ash::Entry::linked();
 	//TODO pull in app_name as parameter or something
@@ -292,21 +350,15 @@ impl<'b> Engine<'b> {
 	let layer_names;
 	let layer_name_ptrs;
 
-	match extensions
-	{
-	    Some(x) => {
-		extension_name = x.iter()
-		    .map(|item| {
-			std::ffi::CString::new(item.as_bytes()).expect("")
-		    })
-		    .collect::<Vec<_>>();
-		extension_name_ptr = extension_name.iter()
-		    .map(|item| item.as_ptr())
-		    .collect::<Vec<_>>();
-		create_info = create_info.enabled_extension_names(&extension_name_ptr);
-	    },
-	    None => { info!("No extensions provided, none will be enabled"); }
-	}
+	extension_name = extensions.iter()
+	    .map(|item| {
+		std::ffi::CString::new(item.as_bytes()).expect("")
+	    })
+	    .collect::<Vec<_>>();
+	extension_name_ptr = extension_name.iter()
+	    .map(|item| item.as_ptr())
+	    .collect::<Vec<_>>();
+	create_info = create_info.enabled_extension_names(&extension_name_ptr);
 
 	match layers {
 	    Some(x) => {
@@ -397,6 +449,7 @@ impl<'b> Drop for Engine<'b> {
 		},
 		None => {}
 	    };
+	    self.surface_loader.destroy_surface(self.surface, None);
 	    self.logical_device.destroy_device(None);
 	    self.instance.destroy_instance(None);
 	}
@@ -410,7 +463,8 @@ fn main() {
     //Note, you can set the rust_log environment variable programmatically here if you want
     //EX: std::env::set_var("RUST_LOG", "info")
     //by default engine will set this to info if no environment variable is specified
-    
+    std::env::set_var("RUST_LOG", "debug");
+	
     let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];
     let mut engine_builder = Engine::builder();
     let mut reese_car_engine = engine_builder
