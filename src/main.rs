@@ -14,7 +14,9 @@ mod utility;
 use utility::window_utility;
 
 struct Queues{
-    graphics_queue: ash::vk::Queue
+    underlying_queues: Vec<ash::vk::Queue>,
+    graphics_queue_index: u32,
+    presentation_queue_index: u32
 }
 
 
@@ -110,21 +112,48 @@ impl<'b> Engine<'b> {
 	let physical_device = Engine::pick_physical_device(&instance, device_filter);
 
 	let priority = [1.0f32];
-	//for now just finid any queue that supports graphics. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
-	let (queue_create_info, index) = Engine::get_physical_device_queue_info(&instance, &physical_device, &priority, |queue_family_properties| {
-	    queue_family_properties.iter().position(|queue_family| {
-		queue_family.queue_flags.contains(ash::vk::QueueFlags::GRAPHICS)
-	    }).unwrap() as u32
-	});
+	//for now just finid any queue that supports graphics & presentation. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
+	let queue_infos_and_indexes = Engine::create_physical_device_queue_info(&instance, &physical_device, &priority, |queue_family_properties| {
+	    let mut graphics_indexes = vec![];
+	    let mut presentation_indexes = vec![];
+	    for (index, queue_family) in queue_family_properties.iter().enumerate() {
+		if queue_family.queue_flags.contains(ash::vk::QueueFlags::GRAPHICS) {
+		    graphics_indexes.push(index);
+		}
+		unsafe {
+		    let supports_surface = surface_loader.get_physical_device_surface_support(physical_device, index as u32, surface)
+			.expect("couldn't check physical device support for given surface");
+		    if supports_surface {
+			presentation_indexes.push(index);
+		    }
+		}
+	    }
+	    if graphics_indexes.len() == 0 || presentation_indexes.len() == 0 {
+		return None;
+	    }
+	    if graphics_indexes[0] == presentation_indexes[0] {
+		debug!("presentation and graphics will share the same queue");
+		return Some(vec![graphics_indexes[0] as u32]);
+	    }
+	    //couldn't find a queue that supports graphics & presentation, so we need to create two queues
+	    debug!("Presentation and graphics will use two separate queues");
+	    return Some(vec![graphics_indexes[0] as u32, presentation_indexes[0] as u32]);
+	}).expect("Couldn't find a queue that supports graphics");
+
+	let logical_device = Engine::get_logical_device(&instance, &physical_device, queue_infos_and_indexes.iter().map(|item| { item.0 }).collect());
+
+	let underlying_queues = queue_infos_and_indexes.iter().map(|item| {
+	    unsafe {
+		logical_device.get_device_queue(item.1, 0) //note the 0, this just means we want the first queue from this family
+	    }
+	}).collect();
 	
-	let logical_device = Engine::get_logical_device(&instance, &physical_device, queue_create_info);
-	
-	let queues;
-	unsafe {
-	    queues = Queues {
-		graphics_queue: logical_device.get_device_queue(index, 0)
-	    };
-	}
+	let queues = Queues {
+	    underlying_queues,
+	    //not the same index as above, those indexes indicated index within the queue family, these indexes indicate the index within the underyling_queue vec
+	    graphics_queue_index: 0,
+	    presentation_queue_index: (queue_infos_and_indexes.len() - 1) as u32 //could be the same index as graphics_queue, but otherwise is the next and final item
+	};
 	
 	Self{instance
 	     ,entry
@@ -273,28 +302,34 @@ impl<'b> Engine<'b> {
 	}
     }
 
-    fn get_physical_device_queue_info<'prio>(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, priority: &'prio[f32], filter: fn(Vec<ash::vk::QueueFamilyProperties>) -> u32) -> (ash::vk::DeviceQueueCreateInfo<'prio> , u32){
-	let index: u32;
+    fn create_physical_device_queue_info<'prio>(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, priority: &'prio[f32], filter: impl Fn(Vec<ash::vk::QueueFamilyProperties>) -> Option<Vec<u32>>) -> Option<Vec<(ash::vk::DeviceQueueCreateInfo<'prio> , u32)>>{
+	let indexes: Vec<u32>;
 	unsafe {
-	    index = filter(instance.get_physical_device_queue_family_properties(*physical_device));
+	    let result = filter(instance.get_physical_device_queue_family_properties(*physical_device));
+
+	    if result.is_none() {
+		return None;
+	    }
+	    indexes = result.unwrap();
 	}
 
-	//TODO support multiple queues with varying priority
-	let result = ash::vk::DeviceQueueCreateInfo::default()
+	let mut results = vec![];
+	for index in indexes {
+	    results.push((ash::vk::DeviceQueueCreateInfo::default()
 	    .queue_family_index(index)
-	    .queue_priorities(priority);
+	    .queue_priorities(priority), index));
 
-	(result, index)
+	}
+	return Some(results);
     }
 
-    fn get_logical_device(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, queue_create_info: ash::vk::DeviceQueueCreateInfo) -> ash::Device {
+    fn get_logical_device(instance: &ash::Instance, physical_device: &ash::vk::PhysicalDevice, queue_create_info: Vec<ash::vk::DeviceQueueCreateInfo>) -> ash::Device {
 
 	//TODO add support to fill out device features
 	let device_features = ash::vk::PhysicalDeviceFeatures::default();
 
-	let queue_create_infos = [queue_create_info];
 	let device_create_info = ash::vk::DeviceCreateInfo::default()
-	    .queue_create_infos(&queue_create_infos)
+	    .queue_create_infos(&queue_create_info)
 	    .enabled_features(&device_features);
 
 	unsafe {
