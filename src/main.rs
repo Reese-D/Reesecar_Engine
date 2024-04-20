@@ -45,14 +45,14 @@ struct Engine<'b>
 struct EngineBuilder<'a,'b>
 {
     layers: Option<Vec<&'a str>>,
-    extensions: Option<Vec<String>>,
+    instance_extensions: Option<Vec<String>>,
     debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
-    device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>
+    device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>
 }
 
 impl<'a,'b> EngineBuilder<'a,'b> {
     pub fn new() -> Self {
-	return EngineBuilder{layers: None, extensions: None, debug_util: None, device_filter: None};
+	return EngineBuilder{layers: None, instance_extensions: None, debug_util: None, device_filter: None};
     }
 
     pub fn enable_validation_layers(&mut self, layers: Vec<&'a str>) -> &mut Self {
@@ -61,18 +61,18 @@ impl<'a,'b> EngineBuilder<'a,'b> {
 	return self
     }
 
-    pub fn set_device_filter(&mut self, device_filter: fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool) -> &mut Self{
+    pub fn set_device_filter(&mut self, device_filter: fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool) -> &mut Self{
 	self.device_filter = Some(device_filter);
 	self
     }
 
-    pub fn enable_extensions(&mut self, extensions: Vec<String>) -> &mut Self {
-	self.extensions = Some(extensions);
+    pub fn enable_instance_extensions(&mut self, extensions: Vec<String>) -> &mut Self {
+	self.instance_extensions = Some(extensions);
 	self
     }
 
     pub fn build(&mut self) -> Engine {
-	Engine::new(&self.layers, &self.extensions, self.debug_util, self.device_filter)
+	Engine::new(&self.layers, &self.instance_extensions, self.debug_util, self.device_filter)
     }
 }
 
@@ -82,7 +82,7 @@ impl<'b> Engine<'b> {
 	EngineBuilder::new()
     }
 
-    fn new(layers: &Option<Vec<&str>>, extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> Self {
+    fn new(layers: &Option<Vec<&str>>, instance_extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>) -> Self {
 	if std::env::var("RUST_LOG").is_err() {
 	    std::env::set_var("RUST_LOG", "info")
 	}
@@ -91,9 +91,9 @@ impl<'b> Engine<'b> {
 	
 	let (event_loop, window) = window_utility::create_window();
 
-	let full_extensions = Engine::configure_extensions(&window, extensions);
+	let full_instance_extensions = Engine::configure_extensions(&window, instance_extensions);
 	
-	let (entry, instance) = Engine::create_instance(layers, &full_extensions);
+	let (entry, instance) = Engine::create_instance(layers, &full_instance_extensions);
 	let(surface, surface_loader) = Engine::get_surface(&entry, &instance, &window);
 	
 	let debug_utils: Option<ash::ext::debug_utils::Instance>;
@@ -338,7 +338,7 @@ impl<'b> Engine<'b> {
 
     }
     //TODO: consider failing if multiple devices match instead of just returning the first, or adding future support to utilize multiple GPU's
-    fn pick_physical_device(instance: &ash::Instance, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties) -> bool>) -> ash::vk::PhysicalDevice{
+    fn pick_physical_device(instance: &ash::Instance, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>) -> ash::vk::PhysicalDevice{
 	unsafe {
 	    let devices = instance.enumerate_physical_devices().expect("Couldn't enumerate physical devices on instance");
 	    match device_filter {
@@ -346,7 +346,8 @@ impl<'b> Engine<'b> {
 		    for device in devices {
 			let features = instance.get_physical_device_features(device);
 			let properties = instance.get_physical_device_properties(device);
-			if filter(&features, &properties){
+			let extensions = instance.enumerate_device_extension_properties(device).expect("Unable to enumerate deevice's extension properties");
+			if filter(&features, &properties, &extensions){
 			    debug!("Chosen physical device: {0:#?}", properties);
 			    return device;
 			}
@@ -502,13 +503,20 @@ fn main() {
 	
     let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];
     let mut engine_builder = Engine::builder();
+
     let mut reese_car_engine = engine_builder
         .enable_validation_layers(layers)
-        .enable_extensions(vec![String::from("VK_EXT_debug_utils")])
-        .set_device_filter(|features, properties| {
+        .enable_instance_extensions(vec![String::from("VK_EXT_debug_utils")])
+        .set_device_filter(|features, properties, extensions| {
 	    info!("shader: {0}, device type: {1:#?}", features.geometry_shader, properties.device_type);
+	    debug!("Extensions available for device: {0:#?}", extensions.iter().fold(String::from(""), |accumulator, element| {
+		return accumulator + " " +  element.extension_name_as_c_str().unwrap().to_str().unwrap();
+	    }));
+	    unsafe {
 	    return properties.device_type == ash::vk::PhysicalDeviceType::DISCRETE_GPU
-		&& features.geometry_shader == vk::TRUE;
+		&& features.geometry_shader == vk::TRUE
+		&& extensions.iter().find(|x| std::ffi::CStr::from_ptr(x.extension_name.as_ptr()) == ash::vk::KHR_SWAPCHAIN_NAME).is_some();
+	    }
 	})
         .build();
 
@@ -518,6 +526,7 @@ fn main() {
     
     reese_car_engine.run();
 }
+
 
 
 
