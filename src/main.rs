@@ -238,7 +238,31 @@ impl<'b> Engine<'b> {
 
 	return final_extension_list;
     }
-    
+
+    fn create_swapchain_info<'swapchain>(physical_device: &vk::PhysicalDevice, surface_loader: &ash::khr::surface::Instance, surface: vk::SurfaceKHR
+				    , filter: impl Fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
+				    , alter_swapchain_create_info: impl Fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR)
+	->  vk::SwapchainCreateInfoKHR<'swapchain>
+    {
+	let capabilities;
+	let formats;
+	let present_modes;
+	unsafe {
+	    capabilities = surface_loader.get_physical_device_surface_capabilities(*physical_device, surface).expect("Unable to get physical device surface capabilities");
+	    formats = surface_loader.get_physical_device_surface_formats(*physical_device, surface).expect("Unable to get physical device surface formats");
+	    present_modes = surface_loader.get_physical_device_surface_present_modes(*physical_device, surface).expect("Unable to get physical device surface presentation modes");
+	}
+	let (present_mode, surface_format, extent, image_usage_flags) = filter(capabilities, formats, present_modes);
+	let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
+	    .image_extent(extent)
+	    .present_mode(present_mode)
+	    .image_format(surface_format.format)
+	    .surface(surface)
+	    .image_color_space(surface_format.color_space)
+	    .image_usage(image_usage_flags);
+
+	alter_swapchain_create_info(swapchain_create_info)
+    }
     pub fn print_validation_layers(&self) {
 	Engine::operate_over_validation_layers(&self.entry, &mut |name| {
 	    info!("{name}");
