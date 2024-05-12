@@ -1,8 +1,8 @@
 use winit::{
-    event_loop, window
+    event_loop, window, dpi::LogicalSize
 };
 
-pub fn create_window() -> (event_loop::EventLoop<()>, window::Window) {
+pub fn create_window(window_dimensions: LogicalSize<u32>) -> (event_loop::EventLoop<()>, window::Window) {
     let event_loop = event_loop::EventLoop::new();
 
     match event_loop {
@@ -10,6 +10,7 @@ pub fn create_window() -> (event_loop::EventLoop<()>, window::Window) {
 	    x.set_control_flow(event_loop::ControlFlow::Poll);
 	    let window = window::WindowBuilder::new()
 		.with_title("Glorious ReeseCar Engine")
+		.with_inner_size(window_dimensions)
 		.build(&x)
 		.unwrap();
 	    return (x, window);

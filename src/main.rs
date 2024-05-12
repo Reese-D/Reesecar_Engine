@@ -2,7 +2,7 @@ extern crate pretty_env_logger;
 #[macro_use] extern crate log;
 
 use winit::{
-    event, event_loop, raw_window_handle::{HasDisplayHandle, HasWindowHandle}, window
+    event, event_loop, raw_window_handle::{HasDisplayHandle, HasWindowHandle}, window, dpi::LogicalSize
 };
 
 use ash::{
@@ -47,12 +47,16 @@ struct EngineBuilder<'a,'b>
     layers: Option<Vec<&'a str>>,
     instance_extensions: Option<Vec<String>>,
     debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
-    device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>
+    device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>,
+    filter: Option<fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)>,
+    alter_swapchain_create_info: Option<fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR>,
+    width: u32,
+    height: u32
 }
 
 impl<'a,'b> EngineBuilder<'a,'b> {
     pub fn new() -> Self {
-	return EngineBuilder{layers: None, instance_extensions: None, debug_util: None, device_filter: None};
+	return EngineBuilder{layers: None, instance_extensions: None, debug_util: None, device_filter: None, filter: None, alter_swapchain_create_info: None, width: 800, height: 600};
     }
 
     pub fn enable_validation_layers(&mut self, layers: Vec<&'a str>) -> &mut Self {
@@ -71,8 +75,70 @@ impl<'a,'b> EngineBuilder<'a,'b> {
 	self
     }
 
+    fn get_logical_defaults_for_swapchain_filter()
+						 -> fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
+    {
+	|surface_capabilities, surface_formats, present_modes|
+	{
+	    let available_formats = surface_formats
+		.iter()
+		.filter(|surface_format| 
+			surface_format.format == ash::vk::Format::B8G8R8A8_SRGB && surface_format.color_space == ash::vk::ColorSpaceKHR::EXTENDED_SRGB_NONLINEAR_EXT
+		)
+		.collect::<Vec<_>>();
+
+	    let format = available_formats
+		.first()
+		.unwrap();
+
+	    let available_present_modes = present_modes
+		.iter()
+		.filter(|present_mode| **present_mode == ash::vk::PresentModeKHR::MAILBOX)
+		.collect::<Vec<_>>();
+
+	    let present_mode = available_present_modes
+		.first()
+		.unwrap();
+
+	    let mut extent = surface_capabilities.current_extent;
+	    if extent.width == u32::MAX {
+		let min = surface_capabilities.min_image_extent;
+		let max = surface_capabilities.max_image_extent;
+		let width = 800.clamp(min.width, max.width);
+		let height = 600.clamp(min.height, max.height);
+		extent = vk::Extent2D { width, height };
+	    }
+	    
+	    (**present_mode, **format, extent, vk::ImageUsageFlags::COLOR_ATTACHMENT)
+	}
+    }
+
+    pub fn set_window_dimensions(&mut self, width: u32, height: u32) -> &mut Self {
+	self.width = width;
+	self.height = height;
+	self
+    }
+
     pub fn build(&mut self) -> Engine {
-	Engine::new(&self.layers, &self.instance_extensions, self.debug_util, self.device_filter)
+	let swapchain_filter;
+	match self.filter {
+	    Some(filter) => {
+		swapchain_filter = filter;
+	    }, None => {
+		swapchain_filter = Self::get_logical_defaults_for_swapchain_filter()
+	    }
+	}
+	Engine::new(&self.layers, &self.instance_extensions, self.debug_util, self.device_filter, swapchain_filter, self.alter_swapchain_create_info, LogicalSize::new(self.width, self.height))
+    }
+
+    pub fn set_swapchain_filter(&mut self
+				, filter: fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
+				, alter_swapchain_create_info: Option<fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR>)
+	->&mut Self
+    {
+	self.filter = Some(filter);
+	self.alter_swapchain_create_info = alter_swapchain_create_info;
+	return self;
     }
 }
 
@@ -82,14 +148,21 @@ impl<'b> Engine<'b> {
 	EngineBuilder::new()
     }
 
-    fn new(layers: &Option<Vec<&str>>, instance_extensions: &Option<Vec<String>>, debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>, device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>) -> Self {
+    fn new(layers: &Option<Vec<&str>>
+	   , instance_extensions: &Option<Vec<String>>
+	   , debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>
+	   , device_filter: Option<fn(&ash::vk::PhysicalDeviceFeatures, &ash::vk::PhysicalDeviceProperties, &Vec<ash::vk::ExtensionProperties>) -> bool>
+	   , filter: fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
+	   , alter_swapchain_create_info: Option<fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR>
+	   , window_dimensions: LogicalSize<u32>
+    ) -> Self {
 	if std::env::var("RUST_LOG").is_err() {
 	    std::env::set_var("RUST_LOG", "info")
 	}
 	pretty_env_logger::init();
 	info!("creating engine instance");
 	
-	let (event_loop, window) = window_utility::create_window();
+	let (event_loop, window) = window_utility::create_window(window_dimensions);
 
 	let full_instance_extensions = Engine::configure_extensions(&window, instance_extensions);
 	
@@ -154,6 +227,9 @@ impl<'b> Engine<'b> {
 	    graphics_queue_index: 0,
 	    presentation_queue_index: (queue_infos_and_indexes.len() - 1) as u32 //could be the same index as graphics_queue, but otherwise is the next and final item
 	};
+
+	
+	let swapchain_info = Engine::create_swapchain_info(&physical_device, &surface_loader, surface, filter, alter_swapchain_create_info);
 	
 	Self{instance
 	     ,entry
@@ -239,9 +315,11 @@ impl<'b> Engine<'b> {
 	return final_extension_list;
     }
 
-    fn create_swapchain_info<'swapchain>(physical_device: &vk::PhysicalDevice, surface_loader: &ash::khr::surface::Instance, surface: vk::SurfaceKHR
-				    , filter: impl Fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
-				    , alter_swapchain_create_info: impl Fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR)
+    fn create_swapchain_info<'swapchain>(physical_device: &vk::PhysicalDevice
+					 , surface_loader: &ash::khr::surface::Instance
+					 , surface: vk::SurfaceKHR
+					 , filter: fn(vk::SurfaceCapabilitiesKHR, Vec<vk::SurfaceFormatKHR>, Vec<vk::PresentModeKHR>)  -> (ash::vk::PresentModeKHR, ash::vk::SurfaceFormatKHR, ash::vk::Extent2D, vk::ImageUsageFlags)
+					 , alter_swapchain_create_info: Option<fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR>)
 	->  vk::SwapchainCreateInfoKHR<'swapchain>
     {
 	let capabilities;
@@ -260,9 +338,16 @@ impl<'b> Engine<'b> {
 	    .surface(surface)
 	    .image_color_space(surface_format.color_space)
 	    .image_usage(image_usage_flags);
-
-	alter_swapchain_create_info(swapchain_create_info)
+	
+	match alter_swapchain_create_info {
+	    Some(filter) => {
+		return filter(swapchain_create_info);
+	    }, None => {
+		return swapchain_create_info;
+	    }
+	}
     }
+    
     pub fn print_validation_layers(&self) {
 	Engine::operate_over_validation_layers(&self.entry, &mut |name| {
 	    info!("{name}");
@@ -542,6 +627,41 @@ fn main() {
 		&& extensions.iter().find(|x| std::ffi::CStr::from_ptr(x.extension_name.as_ptr()) == ash::vk::KHR_SWAPCHAIN_NAME).is_some();
 	    }
 	})
+        .set_swapchain_filter(|surface_capabilities, surface_formats, present_modes|
+			      {
+				  let available_formats = surface_formats
+				      .iter()
+				      .filter(|surface_format| {
+					  debug!("surface format: {:#?}", surface_format);
+					  return surface_format.format == ash::vk::Format::B8G8R8A8_SRGB && surface_format.color_space == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR
+				      })
+				      .collect::<Vec<_>>();
+
+				  let format = available_formats
+				      .first()
+				      .unwrap();
+
+				  let available_present_modes = present_modes
+				      .iter()
+				      .filter(|present_mode| {
+					  debug!("present_mode: {:#?}", present_mode);
+					  return **present_mode == ash::vk::PresentModeKHR::IMMEDIATE
+				      }).collect::<Vec<_>>();
+
+				  let present_mode = available_present_modes
+				      .first()
+				      .unwrap();
+
+				  // let min = surface_capabilities.min_image_extent;
+				  // let max = surface_capabilities.max_image_extent;
+				  // let width = 800.clamp(min.width, max.width);
+				  // let height = 600.clamp(min.height, max.height);
+				  // let extent = vk::Extent2D { width, height };
+
+				  let extent = surface_capabilities.current_extent;
+				  (**present_mode, **format, extent, vk::ImageUsageFlags::COLOR_ATTACHMENT)
+			      },
+			      None)
         .build();
 
     info!("-----------VALIDATION LAYERS-----------");
@@ -550,9 +670,3 @@ fn main() {
     
     reese_car_engine.run();
 }
-
-
-
-
-
-
