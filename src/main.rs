@@ -47,6 +47,8 @@ struct Engine<'b> {
 struct EngineBuilder<'a, 'b> {
     layers: Option<Vec<&'a str>>,
     instance_extensions: Option<Vec<String>>,
+    instance_flags: Option<vk::InstanceCreateFlags>,
+    device_extensions: Option<Vec<String>>,
     debug_util: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
     device_filter: Option<
         fn(
@@ -78,6 +80,8 @@ impl<'a, 'b> EngineBuilder<'a, 'b> {
         return EngineBuilder {
             layers: None,
             instance_extensions: None,
+            instance_flags: None,
+            device_extensions: None,
             debug_util: None,
             device_filter: None,
             filter: None,
@@ -105,8 +109,18 @@ impl<'a, 'b> EngineBuilder<'a, 'b> {
         self
     }
 
+    pub fn enable_instance_flags(&mut self, flags: vk::InstanceCreateFlags) -> &mut Self {
+        self.instance_flags = Some(flags);
+        self
+    }
+
     pub fn enable_instance_extensions(&mut self, extensions: Vec<String>) -> &mut Self {
         self.instance_extensions = Some(extensions);
+        self
+    }
+
+    pub fn enable_device_extensions(&mut self, extensions: Vec<String>) -> &mut Self {
+        self.device_extensions = Some(extensions);
         self
     }
 
@@ -174,6 +188,8 @@ impl<'a, 'b> EngineBuilder<'a, 'b> {
         Engine::new(
             &self.layers,
             &self.instance_extensions,
+            self.instance_flags,
+            &self.device_extensions,
             self.debug_util,
             self.device_filter,
             swapchain_filter,
@@ -212,6 +228,8 @@ impl<'b> Engine<'b> {
     fn new(
         layers: &Option<Vec<&str>>,
         instance_extensions: &Option<Vec<String>>,
+        instance_flags: Option<vk::InstanceCreateFlags>,
+        device_extensions: &Option<Vec<String>>,
         debug_util_info: Option<vk::DebugUtilsMessengerCreateInfoEXT<'b>>,
         device_filter: Option<
             fn(
@@ -245,7 +263,8 @@ impl<'b> Engine<'b> {
 
         let full_instance_extensions = Engine::configure_extensions(&window, instance_extensions);
 
-        let (entry, instance) = Engine::create_instance(layers, &full_instance_extensions);
+        let (entry, instance) =
+            Engine::create_instance(layers, &full_instance_extensions, instance_flags);
         let (surface, surface_loader) = Engine::get_surface(&entry, &instance, &window);
 
         let debug_utils: Option<ash::ext::debug_utils::Instance>;
@@ -314,6 +333,7 @@ impl<'b> Engine<'b> {
             &instance,
             &physical_device,
             queue_infos_and_indexes.iter().map(|item| item.0).collect(),
+            &device_extensions,
         );
 
         let underlying_queues = queue_infos_and_indexes
@@ -599,13 +619,34 @@ impl<'b> Engine<'b> {
         instance: &ash::Instance,
         physical_device: &ash::vk::PhysicalDevice,
         queue_create_info: Vec<ash::vk::DeviceQueueCreateInfo>,
+        extensions: &Option<Vec<String>>,
     ) -> ash::Device {
         //TODO add support to fill out device features
         let device_features = ash::vk::PhysicalDeviceFeatures::default();
 
-        let device_create_info = ash::vk::DeviceCreateInfo::default()
+        let mut device_create_info = ash::vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_info)
             .enabled_features(&device_features);
+
+        let extension_name;
+        let extension_name_ptr;
+
+        match extensions {
+            Some(extension) => {
+                extension_name = extension
+                    .iter()
+                    .map(|item| std::ffi::CString::new(item.as_bytes()).expect(""))
+                    .collect::<Vec<_>>();
+                extension_name_ptr = extension_name
+                    .iter()
+                    .map(|item| item.as_ptr())
+                    .collect::<Vec<_>>();
+
+                device_create_info =
+                    device_create_info.enabled_extension_names(&extension_name_ptr);
+            }
+            None => {}
+        }
 
         unsafe {
             return instance
@@ -658,6 +699,7 @@ impl<'b> Engine<'b> {
     fn create_instance(
         layers: &Option<Vec<&str>>,
         extensions: &Vec<String>,
+        flags: Option<vk::InstanceCreateFlags>,
     ) -> (ash::Entry, ash::Instance) {
         let entry = ash::Entry::linked();
         //TODO pull in app_name as parameter or something
@@ -672,6 +714,13 @@ impl<'b> Engine<'b> {
             .api_version(vk::make_api_version(0, 1, 0, 0));
 
         let mut create_info = vk::InstanceCreateInfo::default().application_info(&app_info);
+
+        match flags {
+            Some(x) => {
+                create_info = create_info.flags(x);
+            }
+            None => {}
+        }
 
         //declaring these outside the match blocks extends the lifetime to mimic the scope of create_info
         let extension_name;
@@ -799,34 +848,41 @@ fn main() {
 
     let mut reese_car_engine = engine_builder
         .enable_validation_layers(layers)
-        .enable_instance_extensions(vec![String::from("VK_EXT_debug_utils")])
-        .set_device_filter(|features, properties, extensions| {
-            info!(
-                "shader: {0}, device type: {1:#?}",
-                features.geometry_shader, properties.device_type
-            );
-            debug!(
-                "Extensions available for device: {0:#?}",
-                extensions
-                    .iter()
-                    .fold(String::from(""), |accumulator, element| {
-                        return accumulator
-                            + " "
-                            + element.extension_name_as_c_str().unwrap().to_str().unwrap();
-                    })
-            );
-            unsafe {
-                return properties.device_type == ash::vk::PhysicalDeviceType::DISCRETE_GPU
-                    && features.geometry_shader == vk::TRUE
-                    && extensions
-                        .iter()
-                        .find(|x| {
-                            std::ffi::CStr::from_ptr(x.extension_name.as_ptr())
-                                == ash::vk::KHR_SWAPCHAIN_NAME
-                        })
-                        .is_some();
-            }
-        })
+        .enable_instance_extensions(vec![
+            String::from("VK_EXT_debug_utils"), //for MacOS
+            String::from("VK_KHR_portability_enumeration"),
+            String::from("VK_KHR_get_physical_device_properties2"),
+        ])
+        // .set_device_filter(|features, properties, extensions| {
+        //     info!(
+        //         "shader: {0}, device type: {1:#?}",
+        //         features.geometry_shader, properties.device_type
+        //     );
+        //     debug!(
+        //         "Extensions available for device: {0:#?}",
+        //         extensions
+        //             .iter()
+        //             .fold(String::from(""), |accumulator, element| {
+        //                 return accumulator
+        //                     + " "
+        //                     + element.extension_name_as_c_str().unwrap().to_str().unwrap();
+        //             })
+        //     );
+        //     unsafe {
+        //         return //properties.device_type == //ash::vk::PhysicalDeviceType::DISCRETE_GPU
+        //             //&&
+        // 	    features.geometry_shader == vk::TRUE
+        //             && extensions
+        //                 .iter()
+        //                 .find(|x| {
+        //                     std::ffi::CStr::from_ptr(x.extension_name.as_ptr())
+        //                         == ash::vk::KHR_SWAPCHAIN_NAME
+        //                 })
+        //                 .is_some();
+        //     }
+        // })
+        .enable_instance_flags(vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR)
+        .enable_device_extensions(vec![String::from("VK_KHR_portability_subset")]) //For MacOS
         .set_swapchain_filter(
             |surface_capabilities, surface_formats, present_modes| {
                 let available_formats = surface_formats
@@ -834,7 +890,8 @@ fn main() {
                     .filter(|surface_format| {
                         debug!("surface format: {:#?}", surface_format);
                         return surface_format.format == ash::vk::Format::B8G8R8A8_SRGB
-                            && surface_format.color_space == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR;
+                            && surface_format.color_space
+                                == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR;
                     })
                     .collect::<Vec<_>>();
 
