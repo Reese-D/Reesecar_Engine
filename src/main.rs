@@ -498,7 +498,8 @@ impl<'b> Engine<'b> {
             .image_format(surface_format.format)
             .surface(surface)
             .image_color_space(surface_format.color_space)
-            .image_usage(image_usage_flags);
+            .image_usage(image_usage_flags)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE); //Requires explicit ownership transfer
 
         match alter_swapchain_create_info {
             Some(filter) => {
