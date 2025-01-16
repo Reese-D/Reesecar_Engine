@@ -44,8 +44,8 @@ struct Engine<'b> {
 }
 
 #[derive(Default)]
-struct EngineBuilder<'a, 'b> {
-    layers: Option<Vec<&'a str>>,
+struct EngineBuilder<'b> {
+    layers: Option<Vec<String>>,
     instance_extensions: Option<Vec<String>>,
     instance_flags: Option<vk::InstanceCreateFlags>,
     device_extensions: Option<Vec<String>>,
@@ -75,7 +75,7 @@ struct EngineBuilder<'a, 'b> {
     height: u32,
 }
 
-impl<'a, 'b> EngineBuilder<'a, 'b> {
+impl<'b> EngineBuilder<'b> {
     pub fn new() -> Self {
         return EngineBuilder {
             layers: None,
@@ -91,7 +91,7 @@ impl<'a, 'b> EngineBuilder<'a, 'b> {
         };
     }
 
-    pub fn enable_validation_layers(&mut self, layers: Vec<&'a str>) -> &mut Self {
+    pub fn enable_validation_layers(&mut self, layers: Vec<String>) -> &mut Self {
         self.layers = Some(layers);
         self.debug_util = Some(Engine::setup_debug_messages());
         return self;
@@ -221,12 +221,12 @@ impl<'a, 'b> EngineBuilder<'a, 'b> {
 }
 
 impl<'b> Engine<'b> {
-    fn builder<'a, 'c>() -> EngineBuilder<'a, 'c> {
+    fn builder<'c>() -> EngineBuilder<'c> {
         EngineBuilder::new()
     }
 
     fn new(
-        layers: &Option<Vec<&str>>,
+        layers: &Option<Vec<String>>,
         instance_extensions: &Option<Vec<String>>,
         instance_flags: Option<vk::InstanceCreateFlags>,
         device_extensions: &Option<Vec<String>>,
@@ -535,7 +535,7 @@ impl<'b> Engine<'b> {
         }
     }
 
-    pub fn check_validation_layers(entry: &ash::Entry, layers: &Vec<&str>) -> bool {
+    pub fn check_validation_layers(entry: &ash::Entry, layers: &Vec<String>) -> bool {
         let mut count = 0;
         Engine::operate_over_validation_layers(entry, &mut |layer_name| {
             let result: bool = layers.iter().any(|name| name == &layer_name);
@@ -698,7 +698,7 @@ impl<'b> Engine<'b> {
     }
 
     fn create_instance(
-        layers: &Option<Vec<&str>>,
+        layers: &Option<Vec<String>>,
         extensions: &Vec<String>,
         flags: Option<vk::InstanceCreateFlags>,
     ) -> (ash::Entry, ash::Instance) {
@@ -739,11 +739,12 @@ impl<'b> Engine<'b> {
             .collect::<Vec<_>>();
         create_info = create_info.enabled_extension_names(&extension_name_ptr);
 
+
         match layers {
             Some(x) => {
                 layer_names = x
                     .iter()
-                    .map(|name| std::ffi::CString::new(*name).expect("couldn't get layer name ptr"))
+                    .map(|name| std::ffi::CString::new(name.clone()).expect("couldn't get layer name ptr"))
                     .collect::<Vec<_>>();
                 layer_name_ptrs = layer_names
                     .iter()
@@ -844,7 +845,7 @@ fn main() {
     //by default engine will set this to info if no environment variable is specified
     std::env::set_var("RUST_LOG", "debug");
 
-    let layers: Vec<&str> = vec!["VK_LAYER_KHRONOS_validation"];
+    let layers: Vec<String> = vec![String::from("VK_LAYER_KHRONOS_validation")];
     let mut engine_builder = Engine::builder();
 
     let mut reese_car_engine = engine_builder
