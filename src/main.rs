@@ -41,6 +41,8 @@ struct Engine<'b> {
     queues: Queues,
     surface: vk::SurfaceKHR,
     surface_loader: ash::khr::surface::Instance,
+    khr_swapchain: ash::vk::SwapchainKHR,
+    swapchain_device: ash::khr::swapchain::Device,
 }
 
 #[derive(Default)]
@@ -284,7 +286,7 @@ impl<'b> Engine<'b> {
         let physical_device = Engine::pick_physical_device(&instance, device_filter);
 
         let priority = [1.0f32];
-        //for now just finid any queue that supports graphics & presentation. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
+        //for now just find any queue that supports graphics & presentation. TODO pick the best queue if multiple exist, extend to use mulitiple queues.
         let queue_infos_and_indexes = Engine::create_physical_device_queue_info(
             &instance,
             &physical_device,
@@ -360,6 +362,21 @@ impl<'b> Engine<'b> {
             alter_swapchain_create_info,
         );
 
+	let swapchain_device = ash::khr::swapchain::Device::new(&instance, &logical_device);
+	let khr_swapchain;	
+	unsafe {
+	    let khr_swapchain_result = swapchain_device.create_swapchain(&swapchain_info, None);
+
+
+	    match khr_swapchain_result {
+		Ok(x) => {
+		    khr_swapchain = x;
+		}, Err(x) => {
+		    //TODO try and handle this error instead of panicking?
+		    panic!("Couldn't make a khr_swapchain with the given swapchain info. Error was {x:?}");
+		}
+	    }
+	}
         Self {
             instance,
             entry,
@@ -373,6 +390,8 @@ impl<'b> Engine<'b> {
             queues,
             surface,
             surface_loader,
+	    khr_swapchain,
+	    swapchain_device
         }
     }
 
@@ -492,6 +511,8 @@ impl<'b> Engine<'b> {
         }
         let (present_mode, surface_format, extent, image_usage_flags) =
             filter(capabilities, formats, present_modes);
+
+
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .image_extent(extent)
             .present_mode(present_mode)
@@ -499,7 +520,12 @@ impl<'b> Engine<'b> {
             .surface(surface)
             .image_color_space(surface_format.color_space)
             .image_usage(image_usage_flags)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE); //Requires explicit ownership transfer
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE) //Requires explicit ownership transfer
+            .pre_transform(capabilities.current_transform) 
+            .composite_alpha(ash::vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .image_array_layers(1) //TODO check if this is what we actually want
+            .min_image_count(capabilities.min_image_count)
+            .clipped(true);
 
         match alter_swapchain_create_info {
             Some(filter) => {
@@ -831,6 +857,7 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
+	    self.swapchain_device.destroy_swapchain(self.khr_swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
             self.logical_device.destroy_device(None);
             self.instance.destroy_instance(None);
@@ -884,7 +911,7 @@ fn main() {
         //     }
         // })
         .enable_instance_flags(vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR)
-        .enable_device_extensions(vec![String::from("VK_KHR_portability_subset")]) //For MacOS
+        .enable_device_extensions(vec![String::from("VK_KHR_portability_subset"), String::from("VK_KHR_swapchain")]) //portability is for MacOS
         .set_swapchain_filter(
             |surface_capabilities, surface_formats, present_modes| {
                 let available_formats = surface_formats
