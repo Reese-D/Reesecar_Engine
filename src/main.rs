@@ -363,7 +363,8 @@ impl<'b> Engine<'b> {
         );
 
 	let swapchain_device = ash::khr::swapchain::Device::new(&instance, &logical_device);
-	let khr_swapchain;	
+	let khr_swapchain;
+	let swapchain_images : Vec<vk::Image>;
 	unsafe {
 	    let khr_swapchain_result = swapchain_device.create_swapchain(&swapchain_info, None);
 
@@ -376,7 +377,19 @@ impl<'b> Engine<'b> {
 		    panic!("Couldn't make a khr_swapchain with the given swapchain info. Error was {x:?}");
 		}
 	    }
+
+	    let swapchain_image_result = swapchain_device.get_swapchain_images(khr_swapchain);
+
+	    match swapchain_image_result {
+		Ok(x) => {
+		    swapchain_images = x;
+		}, Err(x) => {
+		    //TODO try and handle this error instead of panicking?
+		    panic!("Couldn't make a khr_swapchain images Error was {x:?}");
+		}
+	    }
 	}
+
         Self {
             instance,
             entry,
