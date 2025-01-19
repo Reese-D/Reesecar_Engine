@@ -43,6 +43,7 @@ struct Engine<'b> {
     surface_loader: ash::khr::surface::Instance,
     khr_swapchain: ash::vk::SwapchainKHR,
     swapchain_device: ash::khr::swapchain::Device,
+    image_views: Vec<ash::vk::ImageView>
 }
 
 #[derive(Default)]
@@ -368,7 +369,6 @@ impl<'b> Engine<'b> {
 	unsafe {
 	    let khr_swapchain_result = swapchain_device.create_swapchain(&swapchain_info, None);
 
-
 	    match khr_swapchain_result {
 		Ok(x) => {
 		    khr_swapchain = x;
@@ -390,6 +390,46 @@ impl<'b> Engine<'b> {
 	    }
 	}
 
+	let mut mut_image_views = vec![];
+	for i in swapchain_images {
+	    let image_view_info = ash::vk::ImageViewCreateInfo{
+		image: i,
+		view_type: ash::vk::ImageViewType::TYPE_2D,
+		components: vk::ComponentMapping {
+		    r: ash::vk::ComponentSwizzle::IDENTITY,
+		    g: ash::vk::ComponentSwizzle::IDENTITY,
+		    b: ash::vk::ComponentSwizzle::IDENTITY,
+		    a: ash::vk::ComponentSwizzle::IDENTITY
+		},
+		subresource_range: vk::ImageSubresourceRange
+		{
+		    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+		    base_mip_level: 0,
+		    level_count: 1,
+		    base_array_layer: 0,
+		    layer_count: 1
+		},
+		format: ash::vk::Format::B8G8R8A8_SRGB, //TODO this needs to match the swapchain_create_info call's image_format value.
+		..Default::default()
+	    };
+	    
+	    let result;
+	    unsafe {
+		result = logical_device.create_image_view(&image_view_info, None);
+	    }
+	    match result {
+		Ok(x) => {
+		    mut_image_views.push(x);
+		}, Err(x) => {
+		    //TODO try and handle this error instead of panicking?
+		    panic!("Couldn't make a khr_swapchain images Error was {x:?}");
+		}
+	    }
+	}
+
+	let image_views = mut_image_views; //move to immutable
+	//TODO need to destroy all the image_views
+
         Self {
             instance,
             entry,
@@ -404,7 +444,8 @@ impl<'b> Engine<'b> {
             surface,
             surface_loader,
 	    khr_swapchain,
-	    swapchain_device
+	    swapchain_device,
+	    image_views
         }
     }
 
@@ -870,6 +911,10 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
+
+	    for image_view in &self.image_views {
+		self.logical_device.destroy_image_view(*image_view, None);
+	    }
 	    self.swapchain_device.destroy_swapchain(self.khr_swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
             self.logical_device.destroy_device(None);
