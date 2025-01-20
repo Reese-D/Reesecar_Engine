@@ -2,6 +2,8 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
+use std::str::FromStr;
+
 use winit::{
     dpi::LogicalSize,
     event, event_loop,
@@ -10,8 +12,7 @@ use winit::{
 };
 
 use ash::{
-    self,
-    vk::{self},
+    self, khr::load_store_op_none, vk::{self}
 };
 
 mod utility;
@@ -43,7 +44,8 @@ struct Engine<'b> {
     surface_loader: ash::khr::surface::Instance,
     khr_swapchain: ash::vk::SwapchainKHR,
     swapchain_device: ash::khr::swapchain::Device,
-    image_views: Vec<ash::vk::ImageView>
+    image_views: Vec<ash::vk::ImageView>,
+    shader_modules: Vec<ash::vk::ShaderModule>
 }
 
 #[derive(Default)]
@@ -428,7 +430,49 @@ impl<'b> Engine<'b> {
 	}
 
 	let image_views = mut_image_views; //move to immutable
-	//TODO need to destroy all the image_views
+
+	let frag_shader = Engine::load_shader_files(String::from("./Shaders/frag.spv"));
+	let frag_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
+	    .code(&frag_shader);
+	
+	let vert_shader = Engine::load_shader_files(String::from("./Shaders/vert.spv"));
+	let vert_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
+	    .code(&vert_shader);
+
+	let vert_shader_module;
+	let frag_shader_module;
+	//TODO destroy these
+	unsafe {
+	    vert_shader_module = match logical_device.create_shader_module(&vert_shader_create_info, None) {
+		Ok(x) => {
+		    x
+		}, Err(x) => {
+		    panic!("Couldn't create vertex shader module, error was {x:?}");
+		}
+	    };
+	    frag_shader_module = match logical_device.create_shader_module(&frag_shader_create_info, None) {
+		Ok(x) => {
+		    x
+		}, Err(x) => {
+		    panic!("Couldn't create fragment shader module, error was {x:?}");
+		}
+	    };
+	}
+	
+	//TODO remove the names or create a generic function to make CStrings from strings (with lifetime of the string passed in)
+	let main_frag = std::ffi::CString::new("main_frag").expect("CString::new failed somehow");
+	let main_vert = std::ffi::CString::from_str("main_vert").expect("CString::new failed somehow");
+	
+	let vert_shader_pipeline_create_info = ash::vk::PipelineShaderStageCreateInfo::default()
+	    .module(vert_shader_module)
+	    .name(&main_frag)
+	    .stage(ash::vk::ShaderStageFlags::VERTEX);
+	let frag_shader_pipeline_create_info = ash::vk::PipelineShaderStageCreateInfo::default()
+	    .module(frag_shader_module)
+	    .name(&main_vert)
+	    .stage(ash::vk::ShaderStageFlags::FRAGMENT);
+
+
 
         Self {
             instance,
@@ -445,7 +489,8 @@ impl<'b> Engine<'b> {
             surface_loader,
 	    khr_swapchain,
 	    swapchain_device,
-	    image_views
+	    image_views,
+	    shader_modules: vec![vert_shader_module, frag_shader_module]
         }
     }
 
@@ -529,6 +574,12 @@ impl<'b> Engine<'b> {
         }
 
         return final_extension_list;
+    }
+
+    fn load_shader_files(filename: String) -> Vec<u32> {
+	let mut file = std::fs::File::open(filename).unwrap();
+	let words = ash::util::read_spv(&mut file).unwrap();
+	return words;
     }
 
     fn create_swapchain_info<'swapchain>(
@@ -912,6 +963,9 @@ impl<'b> Drop for Engine<'b> {
                 None => {}
             };
 
+	    for shader_module in &self.shader_modules {
+		self.logical_device.destroy_shader_module(*shader_module, None);
+	    }
 	    for image_view in &self.image_views {
 		self.logical_device.destroy_image_view(*image_view, None);
 	    }
