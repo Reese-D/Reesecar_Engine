@@ -45,7 +45,8 @@ struct Engine<'b> {
     khr_swapchain: ash::vk::SwapchainKHR,
     swapchain_device: ash::khr::swapchain::Device,
     image_views: Vec<ash::vk::ImageView>,
-    shader_modules: Vec<ash::vk::ShaderModule>
+    shader_modules: Vec<ash::vk::ShaderModule>,
+    pipeline_layout: ash::vk::PipelineLayout
 }
 
 #[derive(Default)]
@@ -365,6 +366,27 @@ impl<'b> Engine<'b> {
             alter_swapchain_create_info,
         );
 
+	//-----------------------------------------------/-----------------------------------------------
+	//TODO don't duplicate this, pass it into create_swapchain_info (directly above) instead
+	//-----------------------------------------------/-----------------------------------------------
+	let capabilities;
+        let formats;
+        let present_modes;
+        unsafe {
+            capabilities = surface_loader
+                .get_physical_device_surface_capabilities(physical_device, surface)
+                .expect("Unable to get physical device surface capabilities");
+            formats = surface_loader
+                .get_physical_device_surface_formats(physical_device, surface)
+                .expect("Unable to get physical device surface formats");
+            present_modes = surface_loader
+                .get_physical_device_surface_present_modes(physical_device, surface)
+                .expect("Unable to get physical device surface presentation modes");
+        }
+	let (present_mode, surface_format, extent, image_usage_flags) =
+            filter(capabilities, formats, present_modes);
+	//-----------------------------------------------/-----------------------------------------------
+
 	let swapchain_device = ash::khr::swapchain::Device::new(&instance, &logical_device);
 	let khr_swapchain;
 	let swapchain_images : Vec<vk::Image>;
@@ -472,8 +494,81 @@ impl<'b> Engine<'b> {
 	    .name(&main_vert)
 	    .stage(ash::vk::ShaderStageFlags::FRAGMENT);
 
+	let states = vec![ash::vk::DynamicState::VIEWPORT, ash::vk::DynamicState::SCISSOR];
+	let dynamic_state_pipeline_create_info = ash::vk::PipelineDynamicStateCreateInfo::default()
+	    .dynamic_states(&states);
 
+	let vertext_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::default();
+	let pipeline_input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
+	    .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
+	    .primitive_restart_enable(false);
 
+	let viewport = ash::vk::Viewport {
+	    x: 0.0f32,
+	    y: 0.0f32,
+	    width: extent.width as f32,
+	    height: extent.height as f32,
+	    min_depth: 0.0f32,
+	    max_depth: 1.0f32
+	};
+
+	let scissor = ash::vk::Rect2D::default()
+	    .extent(extent);
+
+	// //Static method (using dynamic instead)
+	// let scissors = vec![scissor];
+	// let viewports = vec![viewport];
+	// let pipeline_viewport_create_info = ash::vk::PipelineViewportStateCreateInfo::default()
+	//     .viewports(&viewports)
+	//     .scissors(&scissors);
+
+	let rasterization_create_info = ash::vk::PipelineRasterizationStateCreateInfo::default()
+	    .depth_clamp_enable(false)
+	    .rasterizer_discard_enable(false)
+	    .polygon_mode(ash::vk::PolygonMode::FILL)
+	    .line_width(1.0f32)
+	    .cull_mode(ash::vk::CullModeFlags::BACK)
+	    .front_face(ash::vk::FrontFace::CLOCKWISE)
+	    .depth_bias_enable(false)
+	    .depth_bias_clamp(0.0f32)
+	    .depth_bias_constant_factor(0.0f32)
+	    .depth_bias_slope_factor(0.0f32);
+
+	//this can be used for anti-aliasing, requires enabling a feature and we're not using it for now.
+	let multisampling_create_info = ash::vk::PipelineMultisampleStateCreateInfo::default()
+	    .sample_shading_enable(false)
+	    .rasterization_samples(ash::vk::SampleCountFlags::TYPE_1)
+	    .min_sample_shading(1.0f32)
+	    .alpha_to_coverage_enable(false)
+	    .alpha_to_one_enable(false);
+
+	//No depth or stencil for now
+
+	let pipeline_blend_attachment_state = ash::vk::PipelineColorBlendAttachmentState{
+	    color_write_mask: ash::vk::ColorComponentFlags::RGBA,
+	    blend_enable: 0,
+	    src_color_blend_factor: ash::vk::BlendFactor::ONE,
+	    dst_color_blend_factor: ash::vk::BlendFactor::ZERO,
+	    color_blend_op: ash::vk::BlendOp::ADD,
+	    src_alpha_blend_factor: ash::vk::BlendFactor::ONE,
+	    dst_alpha_blend_factor: ash::vk::BlendFactor::ZERO,
+	    alpha_blend_op: ash::vk::BlendOp::ADD,
+	};
+
+	let attachments = vec![pipeline_blend_attachment_state];
+	let pipeline_blend_color_create_info = ash::vk::PipelineColorBlendStateCreateInfo::default()
+	    .logic_op_enable(false)
+	    .logic_op(ash::vk::LogicOp::COPY)
+	    .attachments(&attachments)
+	    .blend_constants([0.0f32, 0.0f32, 0.0f32, 0.0f32]);
+
+	let pipeline_layout_create_info = ash::vk::PipelineLayoutCreateInfo::default();
+
+	let pipeline_layout;
+	unsafe {
+	    pipeline_layout = logical_device.create_pipeline_layout(&pipeline_layout_create_info, None).expect("Unable to create a pipeline layout in the logical device");
+	}
+	
         Self {
             instance,
             entry,
@@ -490,7 +585,8 @@ impl<'b> Engine<'b> {
 	    khr_swapchain,
 	    swapchain_device,
 	    image_views,
-	    shader_modules: vec![vert_shader_module, frag_shader_module]
+	    shader_modules: vec![vert_shader_module, frag_shader_module],
+	    pipeline_layout
         }
     }
 
@@ -963,6 +1059,7 @@ impl<'b> Drop for Engine<'b> {
                 None => {}
             };
 
+	    self.logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
 	    for shader_module in &self.shader_modules {
 		self.logical_device.destroy_shader_module(*shader_module, None);
 	    }
