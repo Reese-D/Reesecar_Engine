@@ -46,7 +46,8 @@ struct Engine<'b> {
     swapchain_device: ash::khr::swapchain::Device,
     image_views: Vec<ash::vk::ImageView>,
     shader_modules: Vec<ash::vk::ShaderModule>,
-    pipeline_layout: ash::vk::PipelineLayout
+    pipeline_layout: ash::vk::PipelineLayout,
+    render_pass: ash::vk::RenderPass
 }
 
 #[derive(Default)]
@@ -433,7 +434,7 @@ impl<'b> Engine<'b> {
 		    base_array_layer: 0,
 		    layer_count: 1
 		},
-		format: ash::vk::Format::B8G8R8A8_SRGB, //TODO this needs to match the swapchain_create_info call's image_format value.
+		format: ash::vk::Format::B8G8R8A8_SRGB, //TODO this needs to match the swapchain_create_info call's image_format value. Also used for render pass later
 		..Default::default()
 	    };
 	    
@@ -568,6 +569,8 @@ impl<'b> Engine<'b> {
 	unsafe {
 	    pipeline_layout = logical_device.create_pipeline_layout(&pipeline_layout_create_info, None).expect("Unable to create a pipeline layout in the logical device");
 	}
+
+	let render_pass = Engine::create_render_pass(ash::vk::Format::B8G8R8A8_SRGB, &logical_device);
 	
         Self {
             instance,
@@ -586,7 +589,8 @@ impl<'b> Engine<'b> {
 	    swapchain_device,
 	    image_views,
 	    shader_modules: vec![vert_shader_module, frag_shader_module],
-	    pipeline_layout
+	    pipeline_layout,
+	    render_pass
         }
     }
 
@@ -812,6 +816,41 @@ impl<'b> Engine<'b> {
                 .expect("unable to create debug utils messenger");
             return (debug_util, debug_util_messenger);
         }
+    }
+
+    fn create_render_pass(format: ash::vk::Format, logical_device: &ash::Device ) -> ash::vk::RenderPass
+    {
+	let attachment_description = ash::vk::AttachmentDescription::default()
+	    .format(format)
+	    .samples(ash::vk::SampleCountFlags::TYPE_1)
+	    .load_op(ash::vk::AttachmentLoadOp::CLEAR)
+	    .store_op(ash::vk::AttachmentStoreOp::STORE)
+	    .stencil_load_op(ash::vk::AttachmentLoadOp::DONT_CARE)
+	    .stencil_store_op(ash::vk::AttachmentStoreOp::DONT_CARE)
+	    .initial_layout(ash::vk::ImageLayout::UNDEFINED)
+	    .final_layout(ash::vk::ImageLayout::PRESENT_SRC_KHR);
+
+	let attachment_reference = ash::vk::AttachmentReference::default()
+	    .layout(ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+	    .attachment(0);
+
+	let attachment_references = vec![attachment_reference];
+	let subpass_description = ash::vk::SubpassDescription::default()
+	    .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
+	    .color_attachments(&attachment_references);
+
+	let attachments = vec![attachment_description];
+	let subpasses = vec![subpass_description];
+	let render_pass_create_info = ash::vk::RenderPassCreateInfo::default()
+	    .attachments(&attachments)
+	    .subpasses(&subpasses);
+	
+	let render_pass;
+	unsafe{ 
+	    render_pass = logical_device.create_render_pass(&render_pass_create_info, None).expect("Unable to create render pass");
+	}
+
+	return render_pass;
     }
 
     fn create_physical_device_queue_info<'prio>(
@@ -1058,7 +1097,7 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
-
+	    self.logical_device.destroy_render_pass(self.render_pass, None);
 	    self.logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
 	    for shader_module in &self.shader_modules {
 		self.logical_device.destroy_shader_module(*shader_module, None);
