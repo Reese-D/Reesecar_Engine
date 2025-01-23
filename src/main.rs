@@ -47,7 +47,9 @@ struct Engine<'b> {
     image_views: Vec<ash::vk::ImageView>,
     shader_modules: Vec<ash::vk::ShaderModule>,
     pipeline_layout: ash::vk::PipelineLayout,
-    render_pass: ash::vk::RenderPass
+    render_pass: ash::vk::RenderPass,
+    graphics_pipelines: Vec<ash::vk::Pipeline>
+	
 }
 
 #[derive(Default)]
@@ -454,11 +456,11 @@ impl<'b> Engine<'b> {
 
 	let image_views = mut_image_views; //move to immutable
 
-	let frag_shader = Engine::load_shader_files(String::from("./Shaders/frag.spv"));
+	let frag_shader = Engine::load_shader_files(String::from("./Shaders/frag_1.spv"));
 	let frag_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
 	    .code(&frag_shader);
 	
-	let vert_shader = Engine::load_shader_files(String::from("./Shaders/vert.spv"));
+	let vert_shader = Engine::load_shader_files(String::from("./Shaders/vert_1.spv"));
 	let vert_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
 	    .code(&vert_shader);
 
@@ -483,8 +485,8 @@ impl<'b> Engine<'b> {
 	}
 	
 	//TODO remove the names or create a generic function to make CStrings from strings (with lifetime of the string passed in)
-	let main_frag = std::ffi::CString::new("main_frag").expect("CString::new failed somehow");
-	let main_vert = std::ffi::CString::from_str("main_vert").expect("CString::new failed somehow");
+	let main_frag = std::ffi::CString::new("main").expect("CString::new failed somehow");
+	let main_vert = std::ffi::CString::from_str("main").expect("CString::new failed somehow");
 	
 	let vert_shader_pipeline_create_info = ash::vk::PipelineShaderStageCreateInfo::default()
 	    .module(vert_shader_module)
@@ -516,12 +518,12 @@ impl<'b> Engine<'b> {
 	let scissor = ash::vk::Rect2D::default()
 	    .extent(extent);
 
-	// //Static method (using dynamic instead)
-	// let scissors = vec![scissor];
-	// let viewports = vec![viewport];
-	// let pipeline_viewport_create_info = ash::vk::PipelineViewportStateCreateInfo::default()
-	//     .viewports(&viewports)
-	//     .scissors(&scissors);
+	//Static method (using dynamic instead)
+	let scissors = vec![scissor];
+	let viewports = vec![viewport];
+	let pipeline_viewport_create_info = ash::vk::PipelineViewportStateCreateInfo::default()
+	    .viewports(&viewports)
+	    .scissors(&scissors);
 
 	let rasterization_create_info = ash::vk::PipelineRasterizationStateCreateInfo::default()
 	    .depth_clamp_enable(false)
@@ -571,7 +573,30 @@ impl<'b> Engine<'b> {
 	}
 
 	let render_pass = Engine::create_render_pass(ash::vk::Format::B8G8R8A8_SRGB, &logical_device);
-	
+
+	let stages = vec![frag_shader_pipeline_create_info, vert_shader_pipeline_create_info];
+	let graphics_pipeline_create_info = ash::vk::GraphicsPipelineCreateInfo::default()
+	    .stages(&stages)
+	    .vertex_input_state(&vertext_state_create_info)
+	    .input_assembly_state(&pipeline_input_assembly_create_info)
+	    .viewport_state(&pipeline_viewport_create_info)
+	    .rasterization_state(&rasterization_create_info)
+	    .multisample_state(&multisampling_create_info)
+	    .color_blend_state(&pipeline_blend_color_create_info)
+	    .dynamic_state(&dynamic_state_pipeline_create_info)
+	    .layout(pipeline_layout)
+	    .render_pass(render_pass)
+	    .subpass(0)
+	    //.base_pipeline_handle(ash::vk::NativeBufferANDROID);
+	    //.depth_stencil_state(depth_stencil_state)
+	    .base_pipeline_index(-1);
+
+	let graphics_pipeline_infos = vec![graphics_pipeline_create_info];
+	let graphics_pipeline;
+	unsafe {
+	    graphics_pipeline = logical_device.create_graphics_pipelines(ash::vk::PipelineCache::null(), &graphics_pipeline_infos, None).expect("couldn't create graphics pipeline");
+	}
+
         Self {
             instance,
             entry,
@@ -590,7 +615,8 @@ impl<'b> Engine<'b> {
 	    image_views,
 	    shader_modules: vec![vert_shader_module, frag_shader_module],
 	    pipeline_layout,
-	    render_pass
+	    render_pass,
+	    graphics_pipelines: graphics_pipeline
         }
     }
 
@@ -1097,6 +1123,9 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
+	    for pipeline in &self.graphics_pipelines {
+		self.logical_device.destroy_pipeline(*pipeline, None);
+	    }
 	    self.logical_device.destroy_render_pass(self.render_pass, None);
 	    self.logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
 	    for shader_module in &self.shader_modules {
