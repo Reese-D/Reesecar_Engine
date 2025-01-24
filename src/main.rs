@@ -48,8 +48,8 @@ struct Engine<'b> {
     shader_modules: Vec<ash::vk::ShaderModule>,
     pipeline_layout: ash::vk::PipelineLayout,
     render_pass: ash::vk::RenderPass,
-    graphics_pipelines: Vec<ash::vk::Pipeline>
-	
+    graphics_pipelines: Vec<ash::vk::Pipeline>,
+    framebuffers: Vec<ash::vk::Framebuffer>,
 }
 
 #[derive(Default)]
@@ -597,6 +597,22 @@ impl<'b> Engine<'b> {
 	    graphics_pipeline = logical_device.create_graphics_pipelines(ash::vk::PipelineCache::null(), &graphics_pipeline_infos, None).expect("couldn't create graphics pipeline");
 	}
 
+	let mut framebuffers = vec![];
+	for image_view in &image_views {
+	    let attachments = vec![*image_view];
+	    let framebuffer_create_info = ash::vk::FramebufferCreateInfo::default()
+		.render_pass(render_pass)
+		.attachments(&attachments)
+		.width(extent.width)
+		.height(extent.height)
+		.layers(1);
+
+	    
+	    unsafe {
+		framebuffers.push(logical_device.create_framebuffer(&framebuffer_create_info, None).expect("Unable to crate framebuffer"));
+	    }
+	}
+
         Self {
             instance,
             entry,
@@ -616,7 +632,9 @@ impl<'b> Engine<'b> {
 	    shader_modules: vec![vert_shader_module, frag_shader_module],
 	    pipeline_layout,
 	    render_pass,
-	    graphics_pipelines: graphics_pipeline
+	    graphics_pipelines: graphics_pipeline,
+	    framebuffers: framebuffers
+		
         }
     }
 
@@ -1123,6 +1141,9 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
+	    for framebuffer in &self.framebuffers {
+		self.logical_device.destroy_framebuffer(*framebuffer, None);
+	    }
 	    for pipeline in &self.graphics_pipelines {
 		self.logical_device.destroy_pipeline(*pipeline, None);
 	    }
