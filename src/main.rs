@@ -614,14 +614,24 @@ impl<'b> Engine<'b> {
 	    }
 	}
 
-	let command_pool_create_info = ash::vk::CommandPoolCreateInfo::default()
-	    .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-	    .queue_family_index(0); //Graphics queue index
+	let command_pool = Engine::create_command_pool(&logical_device);
+	let command_buffer = Engine::create_command_buffer(&logical_device, &command_pool);
 
-	let command_pool;
+	Engine::begin_render_pass(&logical_device, &command_buffer, &framebuffers[0], &render_pass, &extent);
+	
 	unsafe {
-	    command_pool = logical_device.create_command_pool(&command_pool_create_info, None).expect("Could not create command pool");
+	    logical_device.cmd_bind_pipeline(command_buffer, ash::vk::PipelineBindPoint::GRAPHICS, graphics_pipeline[0]);
 	}
+
+	//draw!
+	unsafe {
+	    logical_device.cmd_set_viewport(command_buffer, 0, &viewports);
+	    logical_device.cmd_set_scissor(command_buffer, 0, &scissors);
+	    logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
+	    logical_device.cmd_end_render_pass(command_buffer);
+	    logical_device.end_command_buffer(command_buffer).expect("Unable to end command buffer");
+	}
+
 	
         Self {
             instance,
@@ -795,6 +805,64 @@ impl<'b> Engine<'b> {
                 return swapchain_create_info;
             }
         }
+    }
+
+    pub fn begin_render_pass(logical_device: &ash::Device, command_buffer: &ash::vk::CommandBuffer, framebuffer: &ash::vk::Framebuffer, render_pass: &ash::vk::RenderPass, extent: &ash::vk::Extent2D) {
+	let command_buffer_begin_info = ash::vk::CommandBufferBeginInfo::default();
+
+	unsafe {
+	    logical_device.begin_command_buffer(*command_buffer, &command_buffer_begin_info).expect("Couldn't begin command buffer");
+	}
+
+	let clear_value = ash::vk::ClearValue{
+		color: ash::vk::ClearColorValue {
+		    float32: [0.0f32, 0.0f32, 0.0f32, 1.0f32]
+		}};
+
+	let clear_values = vec![clear_value];
+
+	    
+	let render_pass_begin_info = ash::vk::RenderPassBeginInfo::default()
+	    .render_pass(*render_pass)
+	    .framebuffer(*framebuffer)
+	    .render_area(ash::vk::Rect2D{
+		offset: vk::Offset2D { x: 0, y: 0 },
+		extent: *extent
+	    })
+	    .clear_values(&clear_values);
+	unsafe {
+	    logical_device.cmd_begin_render_pass(*command_buffer, &render_pass_begin_info, ash::vk::SubpassContents::INLINE);
+	}
+
+    }
+
+    pub fn create_command_pool(logical_device: &ash::Device) -> ash::vk::CommandPool {
+	let command_pool_create_info = ash::vk::CommandPoolCreateInfo::default()
+	    .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+	    .queue_family_index(0); //Graphics queue index
+
+	let command_pool;
+	unsafe {
+	    command_pool = logical_device.create_command_pool(&command_pool_create_info, None).expect("Could not create command pool");
+	}
+
+	command_pool
+    }
+
+    pub fn create_command_buffer(logical_device: &ash::Device, command_pool: &ash::vk::CommandPool) -> ash::vk::CommandBuffer {
+
+	let command_buffer_allocate_info = ash::vk::CommandBufferAllocateInfo::default()
+	    .command_pool(*command_pool)
+	    .level(ash::vk::CommandBufferLevel::PRIMARY)
+	    .command_buffer_count(1);
+
+	let command_buffers;
+	unsafe {
+	    command_buffers = logical_device.allocate_command_buffers(&command_buffer_allocate_info).expect("Couldn't allocate command buffer");
+	}
+
+	command_buffers[0]
+
     }
 
     pub fn print_validation_layers(&self) {
