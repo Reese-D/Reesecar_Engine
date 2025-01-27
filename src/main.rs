@@ -50,6 +50,7 @@ struct Engine<'b> {
     render_pass: ash::vk::RenderPass,
     graphics_pipelines: Vec<ash::vk::Pipeline>,
     framebuffers: Vec<ash::vk::Framebuffer>,
+    command_pool: ash::vk::CommandPool
 }
 
 #[derive(Default)]
@@ -613,6 +614,15 @@ impl<'b> Engine<'b> {
 	    }
 	}
 
+	let command_pool_create_info = ash::vk::CommandPoolCreateInfo::default()
+	    .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+	    .queue_family_index(0); //Graphics queue index
+
+	let command_pool;
+	unsafe {
+	    command_pool = logical_device.create_command_pool(&command_pool_create_info, None).expect("Could not create command pool");
+	}
+	
         Self {
             instance,
             entry,
@@ -633,7 +643,8 @@ impl<'b> Engine<'b> {
 	    pipeline_layout,
 	    render_pass,
 	    graphics_pipelines: graphics_pipeline,
-	    framebuffers: framebuffers
+	    framebuffers,
+	    command_pool
 		
         }
     }
@@ -1141,6 +1152,8 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
+
+	    self.logical_device.destroy_command_pool(self.command_pool, None);
 	    for framebuffer in &self.framebuffers {
 		self.logical_device.destroy_framebuffer(*framebuffer, None);
 	    }
