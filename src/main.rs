@@ -2,7 +2,7 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
-use std::str::FromStr;
+use std::{str::FromStr, u64};
 
 use winit::{
     dpi::LogicalSize,
@@ -12,7 +12,7 @@ use winit::{
 };
 
 use ash::{
-    self, khr::load_store_op_none, vk::{self}
+    self, khr::load_store_op_none, vk::{self, Framebuffer}
 };
 
 mod utility;
@@ -20,8 +20,8 @@ use utility::window_utility;
 
 struct Queues {
     underlying_queues: Vec<ash::vk::Queue>,
-    graphics_queue_index: u32,
-    presentation_queue_index: u32,
+    graphics_queue_index: usize,
+    presentation_queue_index: usize,
 }
 
 struct Engine<'b> {
@@ -50,7 +50,14 @@ struct Engine<'b> {
     render_pass: ash::vk::RenderPass,
     graphics_pipelines: Vec<ash::vk::Pipeline>,
     framebuffers: Vec<ash::vk::Framebuffer>,
-    command_pool: ash::vk::CommandPool
+    command_pool: ash::vk::CommandPool,
+    fence: ash::vk::Fence,
+    image_semaphore: ash::vk::Semaphore,
+    render_semaphore: ash::vk::Semaphore,
+    command_buffer: ash::vk::CommandBuffer,
+    extent: ash::vk::Extent2D,
+    viewport: ash::vk::Viewport,
+    scissor: ash::vk::Rect2D,
 }
 
 #[derive(Default)]
@@ -359,7 +366,7 @@ impl<'b> Engine<'b> {
             underlying_queues,
             //not the same index as above, those indexes indicated index within the queue family, these indexes indicate the index within the underyling_queue vec
             graphics_queue_index: 0,
-            presentation_queue_index: (queue_infos_and_indexes.len() - 1) as u32, //could be the same index as graphics_queue, but otherwise is the next and final item
+            presentation_queue_index: (queue_infos_and_indexes.len() - 1) as usize, //could be the same index as graphics_queue, but otherwise is the next and final item
         };
 
         let swapchain_info = Engine::create_swapchain_info(
@@ -617,22 +624,22 @@ impl<'b> Engine<'b> {
 	let command_pool = Engine::create_command_pool(&logical_device);
 	let command_buffer = Engine::create_command_buffer(&logical_device, &command_pool);
 
-	Engine::begin_render_pass(&logical_device, &command_buffer, &framebuffers[0], &render_pass, &extent);
-	
+	let image_semaphore_info = ash::vk::SemaphoreCreateInfo::default();
+	let render_semaphore_info = ash::vk::SemaphoreCreateInfo::default();
+
+	let fence_info = ash::vk::FenceCreateInfo::default()
+	    .flags(ash::vk::FenceCreateFlags::SIGNALED); //start signaled so we don't infinitely wait on the first fence
+
+	let fence;
+	let image_semaphore;
+	let render_semaphore;
+
 	unsafe {
-	    logical_device.cmd_bind_pipeline(command_buffer, ash::vk::PipelineBindPoint::GRAPHICS, graphics_pipeline[0]);
+	    fence = logical_device.create_fence(&fence_info, None).expect("couldn't create fence");
+	    image_semaphore = logical_device.create_semaphore(&image_semaphore_info, None).expect("couldn't create image semaphore");
+	    render_semaphore = logical_device.create_semaphore(&render_semaphore_info, None).expect("couldn't create image semaphore");
 	}
 
-	//draw!
-	unsafe {
-	    logical_device.cmd_set_viewport(command_buffer, 0, &viewports);
-	    logical_device.cmd_set_scissor(command_buffer, 0, &scissors);
-	    logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
-	    logical_device.cmd_end_render_pass(command_buffer);
-	    logical_device.end_command_buffer(command_buffer).expect("Unable to end command buffer");
-	}
-
-	
         Self {
             instance,
             entry,
@@ -654,8 +661,15 @@ impl<'b> Engine<'b> {
 	    render_pass,
 	    graphics_pipelines: graphics_pipeline,
 	    framebuffers,
-	    command_pool
-		
+	    command_pool,
+	    fence,
+	    image_semaphore,
+	    render_semaphore,
+	    command_buffer,
+	    extent,
+	    viewport,
+	    scissor
+	
         }
     }
 
@@ -679,13 +693,22 @@ impl<'b> Engine<'b> {
                         event::Event::AboutToWait => {
                             //request redraw only if the window actually needs to update
                             //If we *always* want to redraw then just do it here and don't trigger request_redraw()
+			    
                             self.window.request_redraw();
+			    
                         }
                         event::Event::WindowEvent {
                             event: event::WindowEvent::RedrawRequested,
                             ..
                         } => {
                             //Redraw application (for applications that don't redraw every time)
+			    let viewports = vec![self.viewport];
+			    let scissors = vec![self.scissor];
+			    Engine::draw(&self.logical_device, &self.command_buffer, &self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fence, &self.swapchain_device, &self.khr_swapchain, &self.image_semaphore, &self.render_semaphore, &self.queues);
+			    unsafe {
+				self.logical_device.device_wait_idle().expect("Device unable to wait idle");
+			    }
+
                         }
                         _ => (),
                     };
@@ -695,6 +718,49 @@ impl<'b> Engine<'b> {
         }
 
         //our eventloop is now out of scope and gets destroyed. Engine.event_loop is now None
+    }
+
+    fn draw(logical_device: &ash::Device, command_buffer: &ash::vk::CommandBuffer, framebuffers: &[ash::vk::Framebuffer], render_pass: &ash::vk::RenderPass,
+	    extent: &ash::vk::Extent2D, graphics_pipeline: &ash::vk::Pipeline, viewports: &[ash::vk::Viewport], scissors: &[ash::vk::Rect2D], fence: &ash::vk::Fence,
+	    swapchain_device: &ash::khr::swapchain::Device, khr_swapchain: &ash::vk::SwapchainKHR, image_semaphore: &ash::vk::Semaphore, render_semaphore: &ash::vk::Semaphore, queues: &Queues) {
+
+	let image_index;
+	let fences = vec![*fence];
+	unsafe {
+	    //info!("About to wait for fence");
+	    logical_device.wait_for_fences(&fences, true, u64::MAX).expect("Couldn't wait for fences in draw");
+	    logical_device.reset_fences(&fences).expect("Unable to reset fences");
+	    //info!("Done waiting for fence and reset");
+	    (image_index, _) = swapchain_device.acquire_next_image(*khr_swapchain, 3000u64, *image_semaphore, ash::vk::Fence::null()).expect("Couldn't acquire next image from KHR swapchain");
+	    logical_device.reset_command_buffer(*command_buffer, ash::vk::CommandBufferResetFlags::RELEASE_RESOURCES).expect("Couldn't reset command buffer");
+	}
+	Engine::begin_render_pass(logical_device, &command_buffer, &framebuffers[image_index as usize], &render_pass, &extent, viewports, scissors, graphics_pipeline);
+
+	let wait_semaphores = vec![*image_semaphore];
+	let pipeline_stage_flags = vec![ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+	let command_buffers = vec![*command_buffer];
+	let signal_semaphores = vec![*render_semaphore];
+	let submit_info = ash::vk::SubmitInfo::default()
+	    .wait_semaphores(&wait_semaphores)
+	    .wait_dst_stage_mask(&pipeline_stage_flags)
+	    .command_buffers(&command_buffers)
+	    .signal_semaphores(&signal_semaphores);
+
+	let submit_infos = vec![submit_info];
+	unsafe {
+	    logical_device.queue_submit(queues.underlying_queues[queues.graphics_queue_index], &submit_infos, *fence).expect("Unable to submit graphics queue");
+	}
+
+	let khr_swapchains = vec![*khr_swapchain];
+	let image_indices = vec![image_index];
+	let present_info_khr = ash::vk::PresentInfoKHR::default()
+	    .wait_semaphores(&signal_semaphores)
+	    .swapchains(&khr_swapchains)
+	    .image_indices(&image_indices);
+
+	unsafe {
+	    swapchain_device.queue_present(queues.underlying_queues[queues.presentation_queue_index], &present_info_khr).expect("Unable to queue the present info KHR");
+	}
     }
 
     fn configure_extensions(
@@ -807,7 +873,8 @@ impl<'b> Engine<'b> {
         }
     }
 
-    pub fn begin_render_pass(logical_device: &ash::Device, command_buffer: &ash::vk::CommandBuffer, framebuffer: &ash::vk::Framebuffer, render_pass: &ash::vk::RenderPass, extent: &ash::vk::Extent2D) {
+    pub fn begin_render_pass(logical_device: &ash::Device, command_buffer: &ash::vk::CommandBuffer, framebuffer: &ash::vk::Framebuffer, render_pass: &ash::vk::RenderPass,
+			     extent: &ash::vk::Extent2D, viewports: &[ash::vk::Viewport], scissors: &[ash::vk::Rect2D], graphics_pipeline: &ash::vk::Pipeline) {
 	let command_buffer_begin_info = ash::vk::CommandBufferBeginInfo::default();
 
 	unsafe {
@@ -832,7 +899,14 @@ impl<'b> Engine<'b> {
 	    .clear_values(&clear_values);
 	unsafe {
 	    logical_device.cmd_begin_render_pass(*command_buffer, &render_pass_begin_info, ash::vk::SubpassContents::INLINE);
+	    logical_device.cmd_bind_pipeline(*command_buffer, ash::vk::PipelineBindPoint::GRAPHICS, *graphics_pipeline);
+	    logical_device.cmd_set_viewport(*command_buffer, 0, viewports);
+	    logical_device.cmd_set_scissor(*command_buffer, 0, scissors);
+	    logical_device.cmd_draw(*command_buffer, 3, 1, 0, 0);
+	    logical_device.cmd_end_render_pass(*command_buffer);
+	    logical_device.end_command_buffer(*command_buffer).expect("Unable to end command buffer");
 	}
+
 
     }
 
@@ -964,9 +1038,20 @@ impl<'b> Engine<'b> {
 
 	let attachments = vec![attachment_description];
 	let subpasses = vec![subpass_description];
+
+	let subpass_dependency = ash::vk::SubpassDependency::default()
+	    .src_subpass(ash::vk::SUBPASS_EXTERNAL)
+	    .dst_subpass(0)
+	    .src_stage_mask(ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+	    .src_access_mask(ash::vk::AccessFlags::NONE)
+	    .dst_stage_mask(ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+	    .dst_access_mask(ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
+
+	let subpass_dependencies = vec![subpass_dependency];
 	let render_pass_create_info = ash::vk::RenderPassCreateInfo::default()
 	    .attachments(&attachments)
-	    .subpasses(&subpasses);
+	    .subpasses(&subpasses)
+	    .dependencies(&subpass_dependencies);
 	
 	let render_pass;
 	unsafe{ 
@@ -1221,6 +1306,9 @@ impl<'b> Drop for Engine<'b> {
                 None => {}
             };
 
+	    self.logical_device.destroy_fence(self.fence, None);
+	    self.logical_device.destroy_semaphore(self.render_semaphore, None);
+	    self.logical_device.destroy_semaphore(self.image_semaphore, None);
 	    self.logical_device.destroy_command_pool(self.command_pool, None);
 	    for framebuffer in &self.framebuffers {
 		self.logical_device.destroy_framebuffer(*framebuffer, None);
