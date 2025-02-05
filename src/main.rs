@@ -51,13 +51,14 @@ struct Engine<'b> {
     graphics_pipelines: Vec<ash::vk::Pipeline>,
     framebuffers: Vec<ash::vk::Framebuffer>,
     command_pool: ash::vk::CommandPool,
-    fence: ash::vk::Fence,
-    image_semaphore: ash::vk::Semaphore,
-    render_semaphore: ash::vk::Semaphore,
-    command_buffer: ash::vk::CommandBuffer,
+    fences: Vec<ash::vk::Fence>,
+    image_semaphores: Vec<ash::vk::Semaphore>,
+    render_semaphores: Vec<ash::vk::Semaphore>,
+    command_buffers: Vec<ash::vk::CommandBuffer>,
     extent: ash::vk::Extent2D,
     viewport: ash::vk::Viewport,
     scissor: ash::vk::Rect2D,
+    num_frames: u32,
 }
 
 #[derive(Default)]
@@ -270,6 +271,8 @@ impl<'b> Engine<'b> {
         >,
         window_dimensions: LogicalSize<u32>,
     ) -> Self {
+
+	let num_frames = 2;
         if std::env::var("RUST_LOG").is_err() {
             std::env::set_var("RUST_LOG", "info")
         }
@@ -621,24 +624,13 @@ impl<'b> Engine<'b> {
 	    }
 	}
 
+	let frame_count = 2;
 	let command_pool = Engine::create_command_pool(&logical_device);
-	let command_buffer = Engine::create_command_buffer(&logical_device, &command_pool);
+	let command_buffers = Engine::create_command_buffers(&logical_device, &command_pool, frame_count); //TODO make this a parameter for the user to change?
 
-	let image_semaphore_info = ash::vk::SemaphoreCreateInfo::default();
-	let render_semaphore_info = ash::vk::SemaphoreCreateInfo::default();
-
-	let fence_info = ash::vk::FenceCreateInfo::default()
-	    .flags(ash::vk::FenceCreateFlags::SIGNALED); //start signaled so we don't infinitely wait on the first fence
-
-	let fence;
-	let image_semaphore;
-	let render_semaphore;
-
-	unsafe {
-	    fence = logical_device.create_fence(&fence_info, None).expect("couldn't create fence");
-	    image_semaphore = logical_device.create_semaphore(&image_semaphore_info, None).expect("couldn't create image semaphore");
-	    render_semaphore = logical_device.create_semaphore(&render_semaphore_info, None).expect("couldn't create image semaphore");
-	}
+	let fences = Engine::create_fences(&logical_device, frame_count);
+	let image_semaphores = Engine::create_semaphores(&logical_device, frame_count);
+	let render_semaphores = Engine::create_semaphores(&logical_device, frame_count);
 
         Self {
             instance,
@@ -662,18 +654,20 @@ impl<'b> Engine<'b> {
 	    graphics_pipelines: graphics_pipeline,
 	    framebuffers,
 	    command_pool,
-	    fence,
-	    image_semaphore,
-	    render_semaphore,
-	    command_buffer,
+	    fences,
+	    image_semaphores,
+	    render_semaphores,
+	    command_buffers,
 	    extent,
 	    viewport,
-	    scissor
+	    scissor,
+	    num_frames
 	
         }
     }
 
     pub fn run(&mut self) {
+	let mut current_frame = 0usize;
         //.run takes ownership, however since our struct implements drop we aren't allowed
         //to move event_loop out of the struct. To work around this we swap the event loop
         //with another one, and then use the correct version to run
@@ -704,11 +698,11 @@ impl<'b> Engine<'b> {
                             //Redraw application (for applications that don't redraw every time)
 			    let viewports = vec![self.viewport];
 			    let scissors = vec![self.scissor];
-			    Engine::draw(&self.logical_device, &self.command_buffer, &self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fence, &self.swapchain_device, &self.khr_swapchain, &self.image_semaphore, &self.render_semaphore, &self.queues);
+			    Engine::draw(&self.logical_device, &self.command_buffers, &self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fences, &self.swapchain_device, &self.khr_swapchain, &self.image_semaphores, &self.render_semaphores, &self.queues, current_frame);
 			    unsafe {
 				self.logical_device.device_wait_idle().expect("Device unable to wait idle");
 			    }
-
+			    current_frame = (current_frame + 1) % 2;
                         }
                         _ => (),
                     };
@@ -720,41 +714,38 @@ impl<'b> Engine<'b> {
         //our eventloop is now out of scope and gets destroyed. Engine.event_loop is now None
     }
 
-    fn draw(logical_device: &ash::Device, command_buffer: &ash::vk::CommandBuffer, framebuffers: &[ash::vk::Framebuffer], render_pass: &ash::vk::RenderPass,
-	    extent: &ash::vk::Extent2D, graphics_pipeline: &ash::vk::Pipeline, viewports: &[ash::vk::Viewport], scissors: &[ash::vk::Rect2D], fence: &ash::vk::Fence,
-	    swapchain_device: &ash::khr::swapchain::Device, khr_swapchain: &ash::vk::SwapchainKHR, image_semaphore: &ash::vk::Semaphore, render_semaphore: &ash::vk::Semaphore, queues: &Queues) {
+    fn draw(logical_device: &ash::Device, command_buffers: &Vec<ash::vk::CommandBuffer>, framebuffers: &[ash::vk::Framebuffer], render_pass: &ash::vk::RenderPass,
+	    extent: &ash::vk::Extent2D, graphics_pipeline: &ash::vk::Pipeline, viewports: &[ash::vk::Viewport], scissors: &[ash::vk::Rect2D], fences: &Vec<ash::vk::Fence>,
+	    swapchain_device: &ash::khr::swapchain::Device, khr_swapchain: &ash::vk::SwapchainKHR, image_semaphores: &Vec<ash::vk::Semaphore>, render_semaphores: &Vec<ash::vk::Semaphore>, queues: &Queues, current_frame: usize) {
 
+	
 	let image_index;
-	let fences = vec![*fence];
-	unsafe {
-	    //info!("About to wait for fence");
-	    logical_device.wait_for_fences(&fences, true, u64::MAX).expect("Couldn't wait for fences in draw");
-	    logical_device.reset_fences(&fences).expect("Unable to reset fences");
-	    //info!("Done waiting for fence and reset");
-	    (image_index, _) = swapchain_device.acquire_next_image(*khr_swapchain, 3000u64, *image_semaphore, ash::vk::Fence::null()).expect("Couldn't acquire next image from KHR swapchain");
-	    logical_device.reset_command_buffer(*command_buffer, ash::vk::CommandBufferResetFlags::RELEASE_RESOURCES).expect("Couldn't reset command buffer");
-	}
-	Engine::begin_render_pass(logical_device, &command_buffer, &framebuffers[image_index as usize], &render_pass, &extent, viewports, scissors, graphics_pipeline);
+	let current_fences = &fences[current_frame..=current_frame]; //don't want to move into a vec so we just take a slice i guess.
 
-	let wait_semaphores = vec![*image_semaphore];
+	unsafe {
+	    logical_device.wait_for_fences(current_fences, false, u64::MAX).expect("Couldn't wait for fences in draw");
+	    logical_device.reset_fences(&current_fences).expect("Unable to reset fences");
+	    (image_index, _) = swapchain_device.acquire_next_image(*khr_swapchain, 3000u64, image_semaphores[current_frame], ash::vk::Fence::null()).expect("Couldn't acquire next image from KHR swapchain");
+	    logical_device.reset_command_buffer(command_buffers[current_frame], ash::vk::CommandBufferResetFlags::RELEASE_RESOURCES).expect("Couldn't reset command buffer");
+	}
+	Engine::begin_render_pass(logical_device, &command_buffers[current_frame], &framebuffers[image_index as usize], &render_pass, &extent, viewports, scissors, graphics_pipeline);
+
 	let pipeline_stage_flags = vec![ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-	let command_buffers = vec![*command_buffer];
-	let signal_semaphores = vec![*render_semaphore];
 	let submit_info = ash::vk::SubmitInfo::default()
-	    .wait_semaphores(&wait_semaphores)
+	    .wait_semaphores(&image_semaphores[current_frame..=current_frame])
 	    .wait_dst_stage_mask(&pipeline_stage_flags)
-	    .command_buffers(&command_buffers)
-	    .signal_semaphores(&signal_semaphores);
+	    .command_buffers(&command_buffers[current_frame..=current_frame])
+	    .signal_semaphores(&render_semaphores[current_frame..=current_frame]);
 
 	let submit_infos = vec![submit_info];
 	unsafe {
-	    logical_device.queue_submit(queues.underlying_queues[queues.graphics_queue_index], &submit_infos, *fence).expect("Unable to submit graphics queue");
+	    logical_device.queue_submit(queues.underlying_queues[queues.graphics_queue_index], &submit_infos, fences[current_frame]).expect("Unable to submit graphics queue");
 	}
 
 	let khr_swapchains = vec![*khr_swapchain];
 	let image_indices = vec![image_index];
 	let present_info_khr = ash::vk::PresentInfoKHR::default()
-	    .wait_semaphores(&signal_semaphores)
+	    .wait_semaphores(&render_semaphores[current_frame..=current_frame])
 	    .swapchains(&khr_swapchains)
 	    .image_indices(&image_indices);
 
@@ -906,10 +897,37 @@ impl<'b> Engine<'b> {
 	    logical_device.cmd_end_render_pass(*command_buffer);
 	    logical_device.end_command_buffer(*command_buffer).expect("Unable to end command buffer");
 	}
-
-
     }
 
+    pub fn create_semaphores(logical_device: &ash::Device, num: u32) -> Vec<ash::vk::Semaphore> {
+	let mut semaphores = vec![];
+	let mut x = 0;
+	while x < num {
+	    let semaphore_info = ash::vk::SemaphoreCreateInfo::default();
+	    unsafe {
+		let semaphore = logical_device.create_semaphore(&semaphore_info, None).expect("couldn't create image semaphore");
+		semaphores.push(semaphore);
+	    }
+	    x += 1;
+	}
+	semaphores
+    }
+
+    pub fn create_fences(logical_device: &ash::Device, num: u32) -> Vec<ash::vk::Fence> {
+	let mut fences = vec![];
+	let mut x = 0u32;
+	while x < num {
+	    let fence_info = ash::vk::FenceCreateInfo::default()
+		.flags(ash::vk::FenceCreateFlags::SIGNALED); //start signaled so we don't infinitely wait on the first fence
+	    
+	    unsafe {
+		let fence = logical_device.create_fence(&fence_info, None).expect("couldn't create fence");
+		fences.push(fence);
+	    }
+	    x += 1;
+	}
+	fences
+    }
     pub fn create_command_pool(logical_device: &ash::Device) -> ash::vk::CommandPool {
 	let command_pool_create_info = ash::vk::CommandPoolCreateInfo::default()
 	    .flags(ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
@@ -923,20 +941,20 @@ impl<'b> Engine<'b> {
 	command_pool
     }
 
-    pub fn create_command_buffer(logical_device: &ash::Device, command_pool: &ash::vk::CommandPool) -> ash::vk::CommandBuffer {
+    pub fn create_command_buffers(logical_device: &ash::Device, command_pool: &ash::vk::CommandPool, num_buffers: u32) -> Vec<ash::vk::CommandBuffer> {
 
 	let command_buffer_allocate_info = ash::vk::CommandBufferAllocateInfo::default()
 	    .command_pool(*command_pool)
 	    .level(ash::vk::CommandBufferLevel::PRIMARY)
-	    .command_buffer_count(1);
+	    .command_buffer_count(num_buffers);
 
 	let command_buffers;
 	unsafe {
 	    command_buffers = logical_device.allocate_command_buffers(&command_buffer_allocate_info).expect("Couldn't allocate command buffer");
 	}
+	
 
-	command_buffers[0]
-
+	command_buffers
     }
 
     pub fn print_validation_layers(&self) {
@@ -1305,10 +1323,15 @@ impl<'b> Drop for Engine<'b> {
                 },
                 None => {}
             };
-
-	    self.logical_device.destroy_fence(self.fence, None);
-	    self.logical_device.destroy_semaphore(self.render_semaphore, None);
-	    self.logical_device.destroy_semaphore(self.image_semaphore, None);
+	    for fence in &self.fences {
+		self.logical_device.destroy_fence(*fence, None);
+	    }
+	    for semaphore in &self.render_semaphores {
+		self.logical_device.destroy_semaphore(*semaphore, None);
+	    }
+	    for semaphore in &self.image_semaphores {
+		self.logical_device.destroy_semaphore(*semaphore, None);
+	    }
 	    self.logical_device.destroy_command_pool(self.command_pool, None);
 	    for framebuffer in &self.framebuffers {
 		self.logical_device.destroy_framebuffer(*framebuffer, None);
