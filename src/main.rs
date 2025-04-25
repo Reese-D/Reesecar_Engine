@@ -59,6 +59,14 @@ struct Engine<'b> {
     viewport: ash::vk::Viewport,
     scissor: ash::vk::Rect2D,
     num_frames: u32,
+    swapchain_images: Vec<ash::vk::Image>,
+    swapchain_info_generator: Box::<dyn for<'a> Fn(&'a vk::PhysicalDevice,
+				   &'a ash::khr::surface::Instance) -> vk::SwapchainCreateInfoKHR<'a>>
+}
+
+//Just in case we want to re-create things without rebuilding the infos
+struct SavedCreateInfos<'b> {
+    swapchain_info: ash::vk::SwapchainCreateInfoKHR<'b>
 }
 
 #[derive(Default)]
@@ -372,7 +380,7 @@ impl<'b> Engine<'b> {
             presentation_queue_index: (queue_infos_and_indexes.len() - 1) as usize, //could be the same index as graphics_queue, but otherwise is the next and final item
         };
 
-        let swapchain_info = Engine::create_swapchain_info(
+	let swapchain_info = Engine::create_swapchain_info(
             &physical_device,
             &surface_loader,
             surface,
@@ -402,20 +410,10 @@ impl<'b> Engine<'b> {
 	//-----------------------------------------------/-----------------------------------------------
 
 	let swapchain_device = ash::khr::swapchain::Device::new(&instance, &logical_device);
-	let khr_swapchain;
-	let swapchain_images : Vec<vk::Image>;
+	let khr_swapchain = Engine::create_swapchain(&swapchain_device, &swapchain_info);
+
+	let swapchain_images;
 	unsafe {
-	    let khr_swapchain_result = swapchain_device.create_swapchain(&swapchain_info, None);
-
-	    match khr_swapchain_result {
-		Ok(x) => {
-		    khr_swapchain = x;
-		}, Err(x) => {
-		    //TODO try and handle this error instead of panicking?
-		    panic!("Couldn't make a khr_swapchain with the given swapchain info. Error was {x:?}");
-		}
-	    }
-
 	    let swapchain_image_result = swapchain_device.get_swapchain_images(khr_swapchain);
 
 	    match swapchain_image_result {
@@ -427,46 +425,8 @@ impl<'b> Engine<'b> {
 		}
 	    }
 	}
-
-	let mut mut_image_views = vec![];
-	for i in swapchain_images {
-	    let image_view_info = ash::vk::ImageViewCreateInfo{
-		image: i,
-		view_type: ash::vk::ImageViewType::TYPE_2D,
-		components: vk::ComponentMapping {
-		    r: ash::vk::ComponentSwizzle::IDENTITY,
-		    g: ash::vk::ComponentSwizzle::IDENTITY,
-		    b: ash::vk::ComponentSwizzle::IDENTITY,
-		    a: ash::vk::ComponentSwizzle::IDENTITY
-		},
-		subresource_range: vk::ImageSubresourceRange
-		{
-		    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
-		    base_mip_level: 0,
-		    level_count: 1,
-		    base_array_layer: 0,
-		    layer_count: 1
-		},
-		format: ash::vk::Format::B8G8R8A8_SRGB, //TODO this needs to match the swapchain_create_info call's image_format value. Also used for render pass later
-		..Default::default()
-	    };
-	    
-	    let result;
-	    unsafe {
-		result = logical_device.create_image_view(&image_view_info, None);
-	    }
-	    match result {
-		Ok(x) => {
-		    mut_image_views.push(x);
-		}, Err(x) => {
-		    //TODO try and handle this error instead of panicking?
-		    panic!("Couldn't make a khr_swapchain images Error was {x:?}");
-		}
-	    }
-	}
-
-	let image_views = mut_image_views; //move to immutable
-
+	
+	let image_views = Engine::create_image_views(&logical_device, &swapchain_images);
 	let frag_shader = Engine::load_shader_files(String::from("./Shaders/frag_1.spv"));
 	let frag_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
 	    .code(&frag_shader);
@@ -529,9 +489,11 @@ impl<'b> Engine<'b> {
 	let scissor = ash::vk::Rect2D::default()
 	    .extent(extent);
 
-	//Static method (using dynamic instead)
+
 	let scissors = vec![scissor];
 	let viewports = vec![viewport];
+
+	//TODO Consider regenerating this on window resize
 	let pipeline_viewport_create_info = ash::vk::PipelineViewportStateCreateInfo::default()
 	    .viewports(&viewports)
 	    .scissors(&scissors);
@@ -608,22 +570,7 @@ impl<'b> Engine<'b> {
 	    graphics_pipeline = logical_device.create_graphics_pipelines(ash::vk::PipelineCache::null(), &graphics_pipeline_infos, None).expect("couldn't create graphics pipeline");
 	}
 
-	let mut framebuffers = vec![];
-	for image_view in &image_views {
-	    let attachments = vec![*image_view];
-	    let framebuffer_create_info = ash::vk::FramebufferCreateInfo::default()
-		.render_pass(render_pass)
-		.attachments(&attachments)
-		.width(extent.width)
-		.height(extent.height)
-		.layers(1);
-
-	    
-	    unsafe {
-		framebuffers.push(logical_device.create_framebuffer(&framebuffer_create_info, None).expect("Unable to crate framebuffer"));
-	    }
-	}
-
+	let framebuffers = Engine::create_framebuffers(&logical_device, &image_views, &render_pass, &extent);
 	let frame_count = 2;
 	let command_pool = Engine::create_command_pool(&logical_device);
 	let command_buffers = Engine::create_command_buffers(&logical_device, &command_pool, frame_count); //TODO make this a parameter for the user to change?
@@ -632,7 +579,8 @@ impl<'b> Engine<'b> {
 	let image_semaphores = Engine::create_semaphores(&logical_device, frame_count);
 	let render_semaphores = Engine::create_semaphores(&logical_device, frame_count);
 
-        Self {
+	let info_generator = Box::new(Engine::create_swapchain_info_helper(surface, filter, alter_swapchain_create_info));
+        let return_struct = Self {
             instance,
             entry,
             window,
@@ -640,11 +588,11 @@ impl<'b> Engine<'b> {
             _debug_util_create_info: debug_util_info,
             debug_utils,
             debug_util_messenger_ext: debug_util_messenger,
-            physical_device,
+            physical_device: physical_device.clone(),
             logical_device,
             queues,
             surface,
-            surface_loader,
+            surface_loader: surface_loader.clone(),
 	    khr_swapchain,
 	    swapchain_device,
 	    image_views,
@@ -661,9 +609,12 @@ impl<'b> Engine<'b> {
 	    extent,
 	    viewport,
 	    scissor,
-	    num_frames
-	
-        }
+	    num_frames,
+	    swapchain_images,
+	    swapchain_info_generator: info_generator
+	};
+
+	return_struct
     }
 
     pub fn run(&mut self) {
@@ -691,6 +642,19 @@ impl<'b> Engine<'b> {
                             self.window.request_redraw();
 			    
                         }
+			event::Event::WindowEvent {
+                            event: event::WindowEvent::Resized(x),
+			    ..
+			} => {
+			    self.extent = ash::vk::Extent2D {
+				height: x.height,
+				width: x.width
+			    };
+			    self.scissor = ash::vk::Rect2D {
+				extent: self.extent,
+				..Default::default()
+			    };
+			}
                         event::Event::WindowEvent {
                             event: event::WindowEvent::RedrawRequested,
                             ..
@@ -698,7 +662,10 @@ impl<'b> Engine<'b> {
                             //Redraw application (for applications that don't redraw every time)
 			    let viewports = vec![self.viewport];
 			    let scissors = vec![self.scissor];
-			    Engine::draw(&self.logical_device, &self.command_buffers, &self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fences, &self.swapchain_device, &self.khr_swapchain, &self.image_semaphores, &self.render_semaphores, &self.queues, current_frame);
+			    let create_info = (*self.swapchain_info_generator)(&self.physical_device, &self.surface_loader);
+			    info!("create info was: {:?}", create_info);
+
+			    Engine::draw(&self.logical_device, &self.command_buffers, &mut self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fences, &self.swapchain_device, &mut self.khr_swapchain, &self.image_semaphores, &self.render_semaphores, &self.queues, current_frame, &mut self.image_views, &mut self.swapchain_images, &create_info);
 			    unsafe {
 				self.logical_device.device_wait_idle().expect("Device unable to wait idle");
 			    }
@@ -714,18 +681,27 @@ impl<'b> Engine<'b> {
         //our eventloop is now out of scope and gets destroyed. Engine.event_loop is now None
     }
 
-    fn draw(logical_device: &ash::Device, command_buffers: &Vec<ash::vk::CommandBuffer>, framebuffers: &[ash::vk::Framebuffer], render_pass: &ash::vk::RenderPass,
+    fn draw(logical_device: &ash::Device, command_buffers: &Vec<ash::vk::CommandBuffer>, framebuffers: &mut Vec<ash::vk::Framebuffer>, render_pass: &ash::vk::RenderPass,
 	    extent: &ash::vk::Extent2D, graphics_pipeline: &ash::vk::Pipeline, viewports: &[ash::vk::Viewport], scissors: &[ash::vk::Rect2D], fences: &Vec<ash::vk::Fence>,
-	    swapchain_device: &ash::khr::swapchain::Device, khr_swapchain: &ash::vk::SwapchainKHR, image_semaphores: &Vec<ash::vk::Semaphore>, render_semaphores: &Vec<ash::vk::Semaphore>, queues: &Queues, current_frame: usize) {
+	    swapchain_device: &ash::khr::swapchain::Device, khr_swapchain: &mut ash::vk::SwapchainKHR, image_semaphores: &Vec<ash::vk::Semaphore>, render_semaphores: &Vec<ash::vk::Semaphore>, queues: &Queues, current_frame: usize
+	    , image_views: &mut Vec<ash::vk::ImageView>, swapchain_images: &mut Vec<ash::vk::Image>, swapchain_info: &ash::vk::SwapchainCreateInfoKHR) {
 
 	
 	let image_index;
+	let suboptimal: bool;
 	let current_fences = &fences[current_frame..=current_frame]; //don't want to move into a vec so we just take a slice i guess.
 
 	unsafe {
 	    logical_device.wait_for_fences(current_fences, false, u64::MAX).expect("Couldn't wait for fences in draw");
 	    logical_device.reset_fences(&current_fences).expect("Unable to reset fences");
-	    (image_index, _) = swapchain_device.acquire_next_image(*khr_swapchain, 3000u64, image_semaphores[current_frame], ash::vk::Fence::null()).expect("Couldn't acquire next image from KHR swapchain");
+	    (image_index, suboptimal) = swapchain_device.acquire_next_image(*khr_swapchain, 300000u64, image_semaphores[current_frame], ash::vk::Fence::null()).expect("Couldn't acquire next image from KHR swapchain");
+
+	    if suboptimal {
+		info!("{}", suboptimal);
+		info!("Recreating swapchain");
+		Engine::recreate_swapchain(khr_swapchain, image_views, framebuffers, logical_device, swapchain_images, swapchain_device, swapchain_info, render_pass, extent);
+	    }
+	    
 	    logical_device.reset_command_buffer(command_buffers[current_frame], ash::vk::CommandBufferResetFlags::RELEASE_RESOURCES).expect("Couldn't reset command buffer");
 	}
 	Engine::begin_render_pass(logical_device, &command_buffers[current_frame], &framebuffers[image_index as usize], &render_pass, &extent, viewports, scissors, graphics_pipeline);
@@ -804,9 +780,136 @@ impl<'b> Engine<'b> {
 	return words;
     }
 
+    fn create_swapchain(swapchain_device: &ash::khr::swapchain::Device, swapchain_info: &ash::vk::SwapchainCreateInfoKHR) -> ash::vk::SwapchainKHR {
+	let khr_swapchain;
+
+	unsafe {
+	    let khr_swapchain_result = swapchain_device.create_swapchain(swapchain_info, None);
+
+	    match khr_swapchain_result {
+		Ok(x) => {
+		    khr_swapchain = x;
+		}, Err(x) => {
+		    //TODO try and handle this error instead of panicking?
+		    panic!("Couldn't make a khr_swapchain with the given swapchain info. Error was {x:?}");
+		}
+	    }
+	}
+	khr_swapchain
+    }
+
+    fn create_image_views(logical_device: &ash::Device, swapchain_images: &Vec<ash::vk::Image>) -> Vec<ash::vk::ImageView> {
+	let mut image_views = vec![];
+	for i in swapchain_images {
+
+	    info!("image view: {:?}", *i);
+	    let image_view_info = ash::vk::ImageViewCreateInfo{
+		image: *i,
+		view_type: ash::vk::ImageViewType::TYPE_2D,
+		components: vk::ComponentMapping {
+		    r: ash::vk::ComponentSwizzle::IDENTITY,
+		    g: ash::vk::ComponentSwizzle::IDENTITY,
+		    b: ash::vk::ComponentSwizzle::IDENTITY,
+		    a: ash::vk::ComponentSwizzle::IDENTITY
+		},
+		subresource_range: vk::ImageSubresourceRange
+		{
+		    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+		    base_mip_level: 0,
+		    level_count: 1,
+		    base_array_layer: 0,
+		    layer_count: 1
+		},
+		format: ash::vk::Format::B8G8R8A8_SRGB, //TODO this needs to match the swapchain_create_info call's image_format value. Also used for render pass later
+		..Default::default()
+	    };
+	    
+	    let result;
+	    unsafe {
+		result = logical_device.create_image_view(&image_view_info, None);
+	    }
+	    match result {
+		Ok(x) => {
+		    image_views.push(x);
+		}, Err(x) => {
+		    //TODO try and handle this error instead of panicking?
+		    panic!("Couldn't make a khr_swapchain images Error was {x:?}");
+		}
+	    }
+	}
+	image_views //move to immutable
+    }
+
+    fn create_framebuffers(logical_device: &ash::Device, image_views: &Vec<ash::vk::ImageView>, render_pass: &ash::vk::RenderPass, extent: &ash::vk::Extent2D) -> Vec<ash::vk::Framebuffer>{
+	let mut framebuffers = vec![];
+	for image_view in image_views {
+	    let attachments = vec![*image_view];
+	    let framebuffer_create_info = ash::vk::FramebufferCreateInfo::default()
+		.render_pass(*render_pass)
+		.attachments(&attachments)
+		.width(extent.width)
+		.height(extent.height)
+		.layers(1);
+
+	    
+	    unsafe {
+		framebuffers.push(logical_device.create_framebuffer(&framebuffer_create_info, None).expect("Unable to crate framebuffer"));
+	    }
+	}
+	framebuffers
+    }
+
+    fn cleanup_swapchain(logical_device: &ash::Device, swapchain_device: &ash::khr::swapchain::Device, swapchain_khr: &mut ash::vk::SwapchainKHR, image_views:  &mut Vec<ash::vk::ImageView>, framebuffers: &mut Vec<ash::vk::Framebuffer>) {
+	unsafe {
+	    for framebuffer in framebuffers {
+		logical_device.destroy_framebuffer(*framebuffer, None);
+	    }
+
+	    for image_view in image_views {
+		logical_device.destroy_image_view(*image_view, None);
+	    }
+	    swapchain_device.destroy_swapchain(*swapchain_khr, None);
+	}
+    }
+
+    fn recreate_swapchain(swapchain_khr: &mut ash::vk::SwapchainKHR, image_views:  &mut Vec<ash::vk::ImageView>, framebuffers: &mut Vec<ash::vk::Framebuffer>, logical_device: &ash::Device, swapchain_images: &mut Vec<ash::vk::Image>,  swapchain_device: &ash::khr::swapchain::Device, swapchain_info: &ash::vk::SwapchainCreateInfoKHR, render_pass: &ash::vk::RenderPass, extent: &ash::vk::Extent2D) {
+	unsafe{
+	    logical_device.device_wait_idle().expect("logical device unable to wait idle");
+	}
+	info!("swapchain_images[0]: {:?}", swapchain_images[0]);
+	Engine::cleanup_swapchain(logical_device, swapchain_device, swapchain_khr, image_views, framebuffers);
+	*swapchain_khr = Engine::create_swapchain(swapchain_device, swapchain_info);
+	unsafe {
+	    *swapchain_images = swapchain_device.get_swapchain_images(*swapchain_khr).expect("couldn't recreate swapchain images on resize");
+	}
+	info!("khr_swapchain: {:?}", swapchain_khr);
+	*image_views = Engine::create_image_views(logical_device, swapchain_images);
+	info!("image views[0]: {:?}", image_views[0]);
+	*framebuffers = Engine::create_framebuffers(logical_device, &image_views, render_pass, extent);
+	info!("framebuffers[0]: {:?}", framebuffers[0]);
+    }
+
+    fn create_swapchain_info_helper(surface: vk::SurfaceKHR,
+			     filter: fn(
+				 vk::SurfaceCapabilitiesKHR,
+				 Vec<vk::SurfaceFormatKHR>,
+				 Vec<vk::PresentModeKHR>,
+			     ) -> (
+				 ash::vk::PresentModeKHR,
+				 ash::vk::SurfaceFormatKHR,
+				 ash::vk::Extent2D,
+				 vk::ImageUsageFlags,
+			     ),
+			     alter_swapchain_create_info: Option<fn(vk::SwapchainCreateInfoKHR) -> vk::SwapchainCreateInfoKHR>)
+			     -> impl for<'a> Fn(&'a vk::PhysicalDevice,
+				   &'a ash::khr::surface::Instance) -> vk::SwapchainCreateInfoKHR<'a>
+    {
+	move |physical_device, surface_loader| Engine::create_swapchain_info(physical_device, surface_loader, surface, filter, alter_swapchain_create_info)
+    }
+    
     fn create_swapchain_info<'swapchain>(
-        physical_device: &vk::PhysicalDevice,
-        surface_loader: &ash::khr::surface::Instance,
+        physical_device: &'swapchain vk::PhysicalDevice,
+        surface_loader: &'swapchain ash::khr::surface::Instance,
         surface: vk::SurfaceKHR,
         filter: fn(
             vk::SurfaceCapabilitiesKHR,
