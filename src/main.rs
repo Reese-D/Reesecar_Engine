@@ -427,11 +427,11 @@ impl<'b> Engine<'b> {
 	}
 	
 	let image_views = Engine::create_image_views(&logical_device, &swapchain_images);
-	let frag_shader = Engine::load_shader_files(String::from("./Shaders/frag_1.spv"));
+	let frag_shader = Engine::load_shader_files(String::from("./shaders/frag_1.spv"));
 	let frag_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
 	    .code(&frag_shader);
 	
-	let vert_shader = Engine::load_shader_files(String::from("./Shaders/vert_1.spv"));
+	let vert_shader = Engine::load_shader_files(String::from("./shaders/vert_1.spv"));
 	let vert_shader_create_info = ash::vk::ShaderModuleCreateInfo::default()
 	    .code(&vert_shader);
 
@@ -1471,7 +1471,7 @@ fn main() {
     let mut reese_car_engine = engine_builder
         .enable_validation_layers(layers)
         .enable_instance_extensions(vec![
-            String::from("VK_EXT_debug_utils"), //for MacOS
+            //String::from("VK_EXT_debug_utils"), //for MacOS
             String::from("VK_KHR_portability_enumeration"),
             String::from("VK_KHR_get_physical_device_properties2"),
         ])
@@ -1504,7 +1504,8 @@ fn main() {
         //     }
         // })
         .enable_instance_flags(vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR)
-        .enable_device_extensions(vec![String::from("VK_KHR_portability_subset"), String::from("VK_KHR_swapchain")]) //portability is for MacOS
+        .enable_device_extensions(vec![// String::from("VK_KHR_portability_subset"), 
+				       String::from("VK_KHR_swapchain")]) //portability is for MacOS
         .set_swapchain_filter(
             |surface_capabilities, surface_formats, present_modes| {
                 let available_formats = surface_formats

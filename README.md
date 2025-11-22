@@ -20,6 +20,10 @@ emacs -- development environment, you can use an editor of your choice however
 # Build instructions
 `cargo build`
 
+If the shaders aren't compiled, install shaderc and compile as follows (assumes you're in the top level directory of the project).
+`glslc -fshader-stage=vert shaders/vert_1.glsl -o shaders/vert_1.spv`
+`glslc -fshader-stage=frag shaders/frag_1.glsl -o shaders/frag_1.spv`
+
 # Run
 `cargo run`
 
