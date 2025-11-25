@@ -2,6 +2,7 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
+use glam;
 use std::{str::FromStr, u64};
 
 use winit::{
@@ -17,6 +18,19 @@ use ash::{
 
 mod utility;
 use utility::window_utility;
+
+
+struct VertexData {
+    position: glam::Vec2,
+    color: glam::Vec3,
+ 
+}
+struct Vertex {
+    data: VertexData,
+    bindings: Vec<ash::vk::VertexInputBindingDescription>,
+    descriptions: Vec<ash::vk::VertexInputAttributeDescription>
+	
+}
 
 struct Queues {
     underlying_queues: Vec<ash::vk::Queue>,
@@ -472,7 +486,54 @@ impl<'b> Engine<'b> {
 	let dynamic_state_pipeline_create_info = ash::vk::PipelineDynamicStateCreateInfo::default()
 	    .dynamic_states(&states);
 
-	let vertext_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::default();
+	//TODO: Move the vertex_info creation to the user so they can pass in whatever they need instead of hardcoding it here
+	let vertex_info = Vertex {
+	    //Binding tells us how the "vertex" data is layed out, how big each "vertex" object is
+	    bindings: vec![vk::VertexInputBindingDescription {
+		binding: 0,
+		stride: std::mem::size_of::<VertexData>() as u32,
+		input_rate: ash::vk::VertexInputRate::VERTEX
+	    }],
+	    descriptions: vec![
+		//both vertex and color use the same binding as they're packed in one array
+		ash::vk::VertexInputAttributeDescription {
+		    binding: 0,
+		    location: 0,
+		    format: ash::vk::Format::R32G32_SFLOAT,
+		    offset: std::mem::offset_of!(VertexData, position) as u32
+		},
+		ash::vk::VertexInputAttributeDescription {
+		    binding: 0,
+		    location: 1,
+		    format: ash::vk::Format::R32G32B32_SFLOAT,
+		    offset: std::mem::offset_of!(VertexData, color) as u32
+		}],
+	    data: VertexData {
+		color: glam::vec3(0.0, 0.0, 0.0),
+		position: glam::vec2(0.0, 0.0)
+	    }
+	};
+
+	let vertext_state_create_info = ash::vk::PipelineVertexInputStateCreateInfo::default()
+	    .vertex_attribute_descriptions(&vertex_info.descriptions)
+	    .vertex_binding_descriptions(&vertex_info.bindings);
+
+	let vertices = vec![
+	    VertexData {
+		color: glam::vec3(1.0, 0.0, 0.0),
+		position: glam::vec2(0.0, -0.5),
+	    },
+	    VertexData {
+		color: glam::vec3(0.0, 1.0, 0.0),
+		position: glam::vec2(0.5, 0.5),
+	    },
+	    VertexData {
+		color: glam::vec3(0.0, 0.0, 1.0),
+		position: glam::vec2(-0.5, 0.5),
+	    },
+	];
+
+	
 	let pipeline_input_assembly_create_info = ash::vk::PipelineInputAssemblyStateCreateInfo::default()
 	    .topology(ash::vk::PrimitiveTopology::TRIANGLE_LIST)
 	    .primitive_restart_enable(false);
@@ -579,6 +640,9 @@ impl<'b> Engine<'b> {
 	let image_semaphores = Engine::create_semaphores(&logical_device, frame_count);
 	let render_semaphores = Engine::create_semaphores(&logical_device, frame_count);
 
+	//Engine::find_memory_type(&instance, &physical_device, 0);
+	Engine::create_buffer(&logical_device, &physical_device, &instance, std::mem::size_of::<Vertex> as u64, ash::vk::BufferUsageFlags::VERTEX_BUFFER);
+
 	let info_generator = Box::new(Engine::create_swapchain_info_helper(surface, filter, alter_swapchain_create_info));
         let return_struct = Self {
             instance,
@@ -663,7 +727,7 @@ impl<'b> Engine<'b> {
 			    let viewports = vec![self.viewport];
 			    let scissors = vec![self.scissor];
 			    let create_info = (*self.swapchain_info_generator)(&self.physical_device, &self.surface_loader);
-			    info!("create info was: {:?}", create_info);
+			    //info!("create info was: {:?}", create_info);
 
 			    Engine::draw(&self.logical_device, &self.command_buffers, &mut self.framebuffers, &self.render_pass, &self.extent, &self.graphics_pipelines[0], &viewports, &scissors, &self.fences, &self.swapchain_device, &mut self.khr_swapchain, &self.image_semaphores, &self.render_semaphores, &self.queues, current_frame, &mut self.image_views, &mut self.swapchain_images, &create_info);
 			    unsafe {
@@ -796,6 +860,67 @@ impl<'b> Engine<'b> {
 	    }
 	}
 	khr_swapchain
+    }
+
+    fn find_memory_type(instance: &ash::Instance, physical_device: &vk::PhysicalDevice, memory_type_bits: u32) -> u32 {
+	unsafe {
+	    let mut results = vec![];
+	    let memory_properties = instance.get_physical_device_memory_properties(*physical_device);
+
+	    let mut index: u32 = 0;
+	    let memory_types = memory_properties.memory_types;
+	    for memory_type in memory_types {
+		let flags = memory_type.property_flags;
+		let from_raw = ash::vk::MemoryPropertyFlags::from_raw(memory_type_bits);
+		if flags.contains(from_raw) {
+		    results.push(index);
+		}
+		index = index + 1;
+	    }
+	    if results.len() > 1 {
+		warn!("More than one viable memory type was found. Arbitrarily picking the first one");
+		return results[0];
+	    }
+
+	    if results.len() == 0 {
+		panic!("No valid memory type was found for this phsyical device with the given memory type, options were: {:#?}", memory_properties.memory_types);
+	    }
+	   
+	    debug!("found the following valid memory type: {:#?}",  memory_types[results[0] as usize]);
+	    return results[0];
+	}
+    }
+
+    fn create_buffer(logical_device: &ash::Device, physical_device: &vk::PhysicalDevice, instance: &ash::Instance, device_size: u64, buffer_usage: ash::vk::BufferUsageFlags) {
+	//size: std::mem::size_of::<Vertex> as u64;
+	let buffer_create_info = ash::vk::BufferCreateInfo {
+	    s_type: ash::vk::StructureType::BUFFER_CREATE_INFO,
+	    size: device_size,
+	    usage: buffer_usage,
+	    sharing_mode: ash::vk::SharingMode::EXCLUSIVE,
+	    ..Default::default()
+	};
+
+	unsafe {
+	    let buffer = logical_device.create_buffer(&buffer_create_info, None).expect("Unable to create buffer (such as vertex buffer for example)");
+	    let memory_requirements = logical_device.get_buffer_memory_requirements(buffer);
+
+	    let memory_allocate_info = ash::vk::MemoryAllocateInfo {
+		s_type: ash::vk::StructureType::MEMORY_ALLOCATE_INFO,
+		allocation_size: memory_requirements.size,
+		memory_type_index: Engine::find_memory_type(instance, physical_device, memory_requirements.memory_type_bits),
+		..Default::default()
+	    };
+	}
+
+	//	    let device_memory = logical_device.allocate_memory(&memory_allocate_info, None).expect("Couldn't allocate memory for buffer");
+	//logical_device.bind_buffer_memory(buffer, device_memory, 0);
+    //}
+
+    }
+
+    fn create_vertex_buffer() {
+	//TODO fillout
     }
 
     fn create_image_views(logical_device: &ash::Device, swapchain_images: &Vec<ash::vk::Image>) -> Vec<ash::vk::ImageView> {
@@ -1510,7 +1635,7 @@ fn main() {
                 let available_formats = surface_formats
                     .iter()
                     .filter(|surface_format| {
-                        debug!("surface format: {:#?}", surface_format);
+                        //debug!("surface format: {:#?}", surface_format);
                         return surface_format.format == ash::vk::Format::B8G8R8A8_SRGB
                             && surface_format.color_space
                                 == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR;
@@ -1522,7 +1647,7 @@ fn main() {
                 let available_present_modes = present_modes
                     .iter()
                     .filter(|present_mode| {
-                        debug!("present_mode: {:#?}", present_mode);
+                        //debug!("present_mode: {:#?}", present_mode);
                         return **present_mode == ash::vk::PresentModeKHR::IMMEDIATE;
                     })
                     .collect::<Vec<_>>();
@@ -1547,9 +1672,11 @@ fn main() {
         )
         .build();
 
+    
     info!("-----------VALIDATION LAYERS-----------");
     reese_car_engine.print_validation_layers();
     info!("---------------------------------------");
-
+    
     reese_car_engine.run();
+
 }
