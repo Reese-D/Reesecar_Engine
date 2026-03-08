@@ -11,7 +11,7 @@ queue::QueueFamilyIndices queue::findQueueFamilies(VkPhysicalDevice device, VkSu
 
     queue::QueueFamilyIndices indices;
 
-    int i = 0;
+    uint32_t i = 0;
     for (const auto& queueFamily : queueFamilies) {
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;

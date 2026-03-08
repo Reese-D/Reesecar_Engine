@@ -2,7 +2,8 @@ CXX=clang++
 CC=clang
 MODULES := src tests
 # look for include files in each of the modules
-CXXFLAGS := $(patsubst %,-I%,$(MODULES)) -std=c++20 -Wall -O0 -ggdb3 -Itextures/
+ALL_WARN_FLAGS := -pedantic -Wall -Wextra -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wmissing-declarations -Wmissing-include-dirs -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-overflow=5 -Wswitch-default -Wundef -Werror -Wno-unused 
+CXXFLAGS := $(patsubst %,-I%,$(MODULES)) -$(ALL_WARN_FLAGS) -std=c++23 -O0 -ggdb3 -Itextures/ -isystem textures/
 LDFLAGS := -ggdb3
 # lm = libmath (math.h)
 LIBS := -L/usr/local/lib/ -lm -lvulkan -lglfw -lglm

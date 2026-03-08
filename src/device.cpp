@@ -6,9 +6,11 @@
 #include <vulkan/vulkan_core.h>
 #include <set>
 
-
-device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, int width, int height)
-{
+#define UNUSED(x) (void)(x)
+device::device(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface,
+               int width, int height) {
+    UNUSED(width);
+    UNUSED(height);  
     std::cout << "device constructor was called" << std::endl;
     physicalDevice_ = getPhysicalDevice(instance, surface, deviceExtensions_);
 

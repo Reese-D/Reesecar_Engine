@@ -3,37 +3,48 @@
 #include <iostream>
 #include <cstring>
 
+#define UNUSED(x) (void)(x)
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugCallback(
+							     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+							     VkDebugUtilsMessageTypeFlagsEXT messageType,
+							     const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+							     void *pUserData) {
+  UNUSED(messageSeverity);
+  UNUSED(messageType);
+  UNUSED(pUserData);
 
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                         VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                         const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                         void* pUserData)
-{
+  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
-    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
-    return VK_FALSE;
+  return VK_FALSE;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInitDestroyCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                                    VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                                    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                                    void* pUserData)
-{
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInitDestroyCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+								    VkDebugUtilsMessageTypeFlagsEXT messageType,
+								    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+								    void *pUserData) {
+  UNUSED(messageSeverity);
+  UNUSED(messageType);
+  UNUSED(pUserData);
+  
 
-    std::cerr << "Create/Destroy validation layer: " << pCallbackData->pMessage << std::endl;
+  std::cerr << "Create/Destroy validation layer: " << pCallbackData->pMessage << std::endl;
 
-    return VK_FALSE;
+  return VK_FALSE;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInfoCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                             VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                             const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                                                             void* pUserData)
-{
-    std::cout << "validation layer info: " << pCallbackData->pMessage << std::endl;
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInfoCallback(
+							     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+							     VkDebugUtilsMessageTypeFlagsEXT messageType,
+							     const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+							     void *pUserData) {
+  UNUSED(messageSeverity);
+  UNUSED(messageType);
+  UNUSED(pUserData);
+  
+  std::cout << "validation layer info: " << pCallbackData->pMessage << std::endl;
 
-    return VK_TRUE;
+  return VK_TRUE;
 }
 
 

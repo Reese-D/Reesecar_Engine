@@ -249,7 +249,7 @@ std::vector<char> graphics_pipeline::readFile(const std::string& filename) {
     std::vector<char> buffer(fileSize);
 
     file.seekg(0);
-    file.read(buffer.data(), fileSize);
+    file.read(buffer.data(), (std::streamsize)fileSize);
 
     file.close();
 
