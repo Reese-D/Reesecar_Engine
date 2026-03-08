@@ -1,27 +1,22 @@
 #include "instance.hpp"
 #include <chrono>
+#include <iostream>
 #include <memory>
 #include <stdexcept>
-#include <iostream>
 #include <thread>
 
-instance::instance(const std::vector<const char*> validationLayers)
-    :instance_(createInstance(validationLayers))
-{
+instance::instance(const std::vector<const char *> validationLayers) : instance_(createInstance(validationLayers)) {
     std::cout << "instance constructor called" << std::endl;
     validation_ = std::make_unique<validation>(instance_, validationLayers);
 }
 
-instance::~instance()
-{
-    std::cout << "instance destructor called" << std::endl;
-}
+instance::~instance() { std::cout << "instance destructor called" << std::endl; }
 
-std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const char*> validationLayers)
-{
+std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const char *> validationLayers) {
     VkApplicationInfo appInfo{};
-    //most of these are optional
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO; //most structs require explicit type names
+    // most of these are optional
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO; // most structs require
+                                                        // explicit type names
     appInfo.pApplicationName = "Hello Triangle";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.pEngineName = "The glorious Reesecar engine";
@@ -29,19 +24,19 @@ std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const cha
     appInfo.apiVersion = VK_API_VERSION_1_0;
     appInfo.pNext = nullptr; // pNext is for extensions, usually null
 
-    //glfw can give us the required extensions to be passed through
+    // glfw can give us the required extensions to be passed through
     auto extensions = getRequiredExtensions();
-        
-    //not optional, defines which global extensions and validation layers to use
+
+    // not optional, defines which global extensions and validation layers to use
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
     createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
     createInfo.ppEnabledExtensionNames = extensions.data();
-    createInfo.enabledLayerCount = 0; //global validation layers to enable
+    createInfo.enabledLayerCount = 0; // global validation layers to enable
 
     auto validationCreateDestroy = validation::getDebugMessengers()[DEBUG_MESSENGER_INDEX_CREATE_DESTROY];
-                        
+
     if (enableValidationLayers && !validation::checkValidationLayerSupport(validationLayers)) {
         throw std::runtime_error("validation layers requested, but not available!");
     } else {
@@ -54,24 +49,23 @@ std::shared_ptr<VkInstance> instance::createInstance(const std::vector<const cha
             createInfo.pNext = nullptr;
         }
     }
-    
-    auto instance = std::shared_ptr<VkInstance>(new VkInstance(), [](VkInstance* tes){vkDestroyInstance(*tes, nullptr);});
+
+    auto instance = std::shared_ptr<VkInstance>(new VkInstance(), [](VkInstance *tes) { vkDestroyInstance(*tes, nullptr); });
     VkResult result = vkCreateInstance(&createInfo, nullptr, instance.get());
-        
+
     if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create instance!");
     }
-    
+
     return instance;
 }
 
-std::vector<const char*> instance::getRequiredExtensions()
-{
+std::vector<const char *> instance::getRequiredExtensions() {
     uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
+    const char **glfwExtensions;
     glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
 
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+    std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
     if (enableValidationLayers) {
         extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -80,8 +74,4 @@ std::vector<const char*> instance::getRequiredExtensions()
     return extensions;
 }
 
-std::shared_ptr<VkInstance> instance::getInstance()
-{
-    return instance_;
-}
-
+std::shared_ptr<VkInstance> instance::getInstance() { return instance_; }

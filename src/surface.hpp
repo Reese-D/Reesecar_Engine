@@ -4,8 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <memory>
 
-class window
-{
-public:
-    static VkSurfaceKHR getSurface(VkInstance instance, std::shared_ptr<GLFWwindow> window); 
+class window {
+  public:
+    static VkSurfaceKHR getSurface(VkInstance instance, std::shared_ptr<GLFWwindow> window);
 };

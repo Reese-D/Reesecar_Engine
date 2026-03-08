@@ -1,43 +1,30 @@
 #include "graphics_pipeline.hpp"
 #include "components/drawing.hpp"
-#include <stdexcept>
-#include <iostream>
 #include <fstream>
+#include <iostream>
+#include <stdexcept>
 #include <vulkan/vulkan_core.h>
 
 graphics_pipeline::graphics_pipeline(VkDevice device, VkFormat colorFormat, VkFormat depthFormat, VkDescriptorSetLayout descriptorSetLayout)
-    :device_(device)
-    ,descriptorSetLayout_(descriptorSetLayout)
-{
+    : device_(device), descriptorSetLayout_(descriptorSetLayout) {
     pCustomRenderPass_ = new render_pass(device_, colorFormat, depthFormat);
     createGraphicsPipeline();
 }
 
-graphics_pipeline::~graphics_pipeline()
-{
+graphics_pipeline::~graphics_pipeline() {
     std::cout << "graphics pipeline destructor called" << std::endl;
     vkDestroyPipeline(device_, graphicsPipeline_, nullptr);
     vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);
     delete pCustomRenderPass_;
 }
 
+VkPipelineLayout graphics_pipeline::getPipelineLayout() { return pipelineLayout_; }
 
-VkPipelineLayout graphics_pipeline::getPipelineLayout()
-{
-    return pipelineLayout_;
-}
-
-VkPipeline graphics_pipeline::getGraphicsPipeline()
-{
-    return graphicsPipeline_;
-}
-VkRenderPass graphics_pipeline::getRenderPass()
-{
-    return pCustomRenderPass_->getRenderPass();
-}
+VkPipeline graphics_pipeline::getGraphicsPipeline() { return graphicsPipeline_; }
+VkRenderPass graphics_pipeline::getRenderPass() { return pCustomRenderPass_->getRenderPass(); }
 
 void graphics_pipeline::createGraphicsPipeline() {
-    
+
     auto vertShaderCode = readFile("shaders/vert.spv");
     auto fragShaderCode = readFile("shaders/frag.spv");
 
@@ -66,7 +53,7 @@ void graphics_pipeline::createGraphicsPipeline() {
     vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
     vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
     vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-    
+
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
@@ -92,20 +79,19 @@ void graphics_pipeline::createGraphicsPipeline() {
     multisampling.sampleShadingEnable = VK_FALSE;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depthStencil.depthTestEnable = VK_TRUE;
     depthStencil.depthWriteEnable = VK_TRUE;
     depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
-    
+
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.minDepthBounds = 0.0f; // Optional
     depthStencil.maxDepthBounds = 1.0f; // Optional
-    
+
     depthStencil.stencilTestEnable = VK_FALSE;
     depthStencil.front = {}; // Optional
-    depthStencil.back = {}; // Optional
+    depthStencil.back = {};  // Optional
 
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -122,10 +108,7 @@ void graphics_pipeline::createGraphicsPipeline() {
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
-    std::vector<VkDynamicState> dynamicStates = {
-        VK_DYNAMIC_STATE_VIEWPORT,
-        VK_DYNAMIC_STATE_SCISSOR
-    };
+    std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState{};
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
@@ -157,35 +140,25 @@ void graphics_pipeline::createGraphicsPipeline() {
     pipelineInfo.renderPass = pCustomRenderPass_->getRenderPass();
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
-    pipelineInfo.basePipelineIndex = -1; // Optional
+    pipelineInfo.basePipelineIndex = -1;              // Optional
     if (vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create graphics pipeline!");
     }
-    
+
     vkDestroyShaderModule(device_, fragShaderModule, nullptr);
     vkDestroyShaderModule(device_, vertShaderModule, nullptr);
 }
 
-VkVertexInputBindingDescription graphics_pipeline::generateVertexInputBindingDescription(
-                                                              uint32_t binding,
-                                                              uint32_t stride,
-                                                              VkVertexInputRate inputRate)
-{
-    VkVertexInputBindingDescription vInputBindDescription {};
+VkVertexInputBindingDescription graphics_pipeline::generateVertexInputBindingDescription(uint32_t binding, uint32_t stride, VkVertexInputRate inputRate) {
+    VkVertexInputBindingDescription vInputBindDescription{};
     vInputBindDescription.binding = binding;
     vInputBindDescription.stride = stride;
     vInputBindDescription.inputRate = inputRate;
     return vInputBindDescription;
 }
 
-
-VkVertexInputAttributeDescription graphics_pipeline::generateVertexInputAttributeDescription(
-                                                                                             uint32_t binding,
-                                                                                             uint32_t location,
-                                                                                             VkFormat format,
-                                                                                             uint32_t offset)
-{
-    VkVertexInputAttributeDescription vInputAttribDescription {};
+VkVertexInputAttributeDescription graphics_pipeline::generateVertexInputAttributeDescription(uint32_t binding, uint32_t location, VkFormat format, uint32_t offset) {
+    VkVertexInputAttributeDescription vInputAttribDescription{};
     vInputAttribDescription.location = location;
     vInputAttribDescription.binding = binding;
     vInputAttribDescription.format = format;
@@ -193,42 +166,38 @@ VkVertexInputAttributeDescription graphics_pipeline::generateVertexInputAttribut
     return vInputAttribDescription;
 }
 
-std::vector<VkVertexInputBindingDescription> graphics_pipeline::getBindingDescriptions()
-{
+std::vector<VkVertexInputBindingDescription> graphics_pipeline::getBindingDescriptions() {
     std::vector<VkVertexInputBindingDescription> bindingDescriptions = {
         generateVertexInputBindingDescription(0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX),
         generateVertexInputBindingDescription(1, sizeof(instance2DComponent), VK_VERTEX_INPUT_RATE_INSTANCE),
     };
-    
+
     return bindingDescriptions;
 }
 
 std::vector<VkVertexInputAttributeDescription> graphics_pipeline::getAttributeDescriptions() {
     std::vector<VkVertexInputAttributeDescription> attributeDescriptions = {
-        //vertex data
+        // vertex data
         generateVertexInputAttributeDescription(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)),
         generateVertexInputAttributeDescription(0, 1, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)),
         generateVertexInputAttributeDescription(0, 2, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, textureCoordinate)),
 
-        
-        //instance data
+        // instance data
         generateVertexInputAttributeDescription(1, 3, VK_FORMAT_R32G32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, position)),
         generateVertexInputAttributeDescription(1, 4, VK_FORMAT_R8_UINT, sizeof(Vertex) + offsetof(instance2DComponent, depthLevel)),
         generateVertexInputAttributeDescription(1, 5, VK_FORMAT_R32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, rotation)),
         generateVertexInputAttributeDescription(1, 6, VK_FORMAT_R32_SFLOAT, sizeof(Vertex) + offsetof(instance2DComponent, scale)),
-        
+
     };
-            
+
     return attributeDescriptions;
 }
 
-
-
-VkShaderModule graphics_pipeline::createShaderModule(const std::vector<char>& code) {
+VkShaderModule graphics_pipeline::createShaderModule(const std::vector<char> &code) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+    createInfo.pCode = reinterpret_cast<const uint32_t *>(code.data());
 
     VkShaderModule shaderModule;
     if (vkCreateShaderModule(device_, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
@@ -238,14 +207,14 @@ VkShaderModule graphics_pipeline::createShaderModule(const std::vector<char>& co
     return shaderModule;
 }
 
-std::vector<char> graphics_pipeline::readFile(const std::string& filename) {
+std::vector<char> graphics_pipeline::readFile(const std::string &filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
         throw std::runtime_error("failed to open file!");
     }
 
-    size_t fileSize = (size_t) file.tellg();
+    size_t fileSize = (size_t)file.tellg();
     std::vector<char> buffer(fileSize);
 
     file.seekg(0);

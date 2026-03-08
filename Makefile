@@ -40,6 +40,8 @@ shaders/vert.spv: shaders/vert.glsl
 test: $(TEST_OBJ)
 	$(CXX) -o $@ $(TEST_OBJ) $(LIBS)
 
+format:
+	find src -iname '*.hpp' -o -iname '*.cpp' | xargs clang-format -i
 clean:
 	find ./ -iname "*.o" -exec rm {} \;
 	find ./ -iname "*.d" -exec rm {} \;
