@@ -194,8 +194,10 @@ class GameEngine {
     };
 
     void createDepthResources() {
-        createImage(swapchainExtent_.width, swapchainExtent_.height, depthFormat_, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage_, depthImageMemory_);
+        createImage(
+            swapchainExtent_.width, swapchainExtent_.height, depthFormat_, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+            depthImage_, depthImageMemory_
+        );
     }
 
     VkCommandBuffer beginSingleTimeCommands() {
@@ -277,8 +279,10 @@ class GameEngine {
 
         stbi_image_free(pixels);
 
-        createImage((uint32_t)texWidth, (uint32_t)texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage_, textureImageMemory_);
+        createImage(
+            (uint32_t)texWidth, (uint32_t)texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage_, textureImageMemory_
+        );
 
         transitionImageLayout(textureImage_, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         copyBufferToImage(stagingBuffer, textureImage_, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
@@ -288,8 +292,9 @@ class GameEngine {
         vkFreeMemory(logicalDevice_, stagingBufferMemory, nullptr);
     }
 
-    void createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image,
-                     VkDeviceMemory &imageMemory) {
+    void createImage(
+        uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory
+    ) {
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -422,8 +427,9 @@ class GameEngine {
         uniformBuffersMapped_.resize(MAX_FRAMES_IN_FLIGHT);
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers_[i],
-                         uniformBuffersMemory_[i]);
+            createBuffer(
+                bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers_[i], uniformBuffersMemory_[i]
+            );
 
             vkMapMemory(logicalDevice_, uniformBuffersMemory_[i], 0, bufferSize, 0, &uniformBuffersMapped_[i]);
         }
@@ -663,8 +669,10 @@ class GameEngine {
         updateUniformBuffer(currentFrame_);
         vkResetFences(logicalDevice_, 1, &inFlightFences_[currentFrame_]);
 
-        vkResetCommandBuffer(commandBuffers_[currentFrame_],
-                             /*VkCommandBufferResetFlagBits*/ 0);
+        vkResetCommandBuffer(
+            commandBuffers_[currentFrame_],
+            /*VkCommandBufferResetFlagBits*/ 0
+        );
         recordCommandBuffer(commandBuffers_[currentFrame_], imageIndex, renderPass_, swapchainFramebuffers_);
 
         VkSubmitInfo submitInfo{};
@@ -788,9 +796,11 @@ class GameEngine {
         glfwInit();
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        glfwWindowHint(GLFW_RESIZABLE,
-                       GLFW_FALSE); // disable resizing for now, takes more
-                                    // complexity to handle it
+        glfwWindowHint(
+            GLFW_RESIZABLE,
+            GLFW_FALSE
+        ); // disable resizing for now, takes more
+           // complexity to handle it
         std::shared_ptr<GLFWwindow> window(glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr), &glfwDestroyWindow);
 
         glfwSetWindowUserPointer(window.get(), this);

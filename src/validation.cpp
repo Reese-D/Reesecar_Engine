@@ -4,8 +4,9 @@
 #include <iostream>
 
 #define UNUSED(x) (void)(x)
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                         const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData
+) {
     UNUSED(messageSeverity);
     UNUSED(messageType);
     UNUSED(pUserData);
@@ -15,8 +16,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugCallback(VkDebugUtilsMessageSeve
     return VK_FALSE;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInitDestroyCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                                    const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInitDestroyCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData
+) {
     UNUSED(messageSeverity);
     UNUSED(messageType);
     UNUSED(pUserData);
@@ -26,8 +28,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInitDestroyCallback(VkDebugUtils
     return VK_FALSE;
 }
 
-VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInfoCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                             const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
+VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInfoCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData
+) {
     UNUSED(messageSeverity);
     UNUSED(messageType);
     UNUSED(pUserData);
@@ -37,8 +40,9 @@ VKAPI_ATTR VkBool32 VKAPI_CALL validation::debugInfoCallback(VkDebugUtilsMessage
     return VK_TRUE;
 }
 
-VkDebugUtilsMessengerCreateInfoEXT validation::createErrorDebug(VkStructureType structureType, VkDebugUtilsMessageSeverityFlagsEXT messageSeverity,
-                                                                VkDebugUtilsMessageTypeFlagsEXT messageType, PFN_vkDebugUtilsMessengerCallbackEXT callback) {
+VkDebugUtilsMessengerCreateInfoEXT validation::createErrorDebug(
+    VkStructureType structureType, VkDebugUtilsMessageSeverityFlagsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, PFN_vkDebugUtilsMessengerCallbackEXT callback
+) {
     VkDebugUtilsMessengerCreateInfoEXT createError{};
     createError.sType = structureType;
     createError.messageSeverity = messageSeverity;
@@ -62,8 +66,9 @@ const std::vector<VkDebugUtilsMessengerCreateInfoEXT> validation::getDebugMessen
     return debugMessengers;
 }
 
-VkResult validation::CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator,
-                                                  VkDebugUtilsMessengerEXT *pDebugMessenger) {
+VkResult validation::CreateDebugUtilsMessengerEXT(
+    VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger
+) {
     auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
     if (func != nullptr) {
         return func(instance, pCreateInfo, pAllocator, pDebugMessenger);

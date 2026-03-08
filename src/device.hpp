@@ -25,10 +25,11 @@ class device {
     static VkPhysicalDevice getPhysicalDevice(std::shared_ptr<VkInstance> instance, VkSurfaceKHR surface, const std::vector<const char *> deviceExtensions);
     static VkPhysicalDeviceFeatures getDeviceFeatures(VkPhysicalDevice device);
     static VkPhysicalDeviceProperties getDeviceProperties(VkPhysicalDevice device);
-    static VkDevice getLogicalDevice(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices,
-                                     std::vector<const char *> deviceExtensions);
-    static bool isDeviceSuitable(VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties deviceProperties, VkPhysicalDeviceFeatures deviceFeatures,
-                                 queue::QueueFamilyIndices indices, VkSurfaceKHR surface);
+    static VkDevice
+    getLogicalDevice(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices, std::vector<const char *> deviceExtensions);
+    static bool isDeviceSuitable(
+        VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties deviceProperties, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices, VkSurfaceKHR surface
+    );
     static bool hasSupportForSurface(VkPhysicalDevice device, VkSurfaceKHR surface, queue::QueueFamilyIndices indices);
     static bool doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vector<const char *> deviceExtensions);
     VkDevice logicalDevice_;

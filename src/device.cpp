@@ -101,8 +101,9 @@ bool device::doesDeviceSupportExtensions(VkPhysicalDevice device, const std::vec
     return requiredExtensions.empty();
 }
 
-bool device::isDeviceSuitable(VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties deviceProperties, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices,
-                              VkSurfaceKHR surface) {
+bool device::isDeviceSuitable(
+    VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties deviceProperties, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices, VkSurfaceKHR surface
+) {
     bool swapChainAdequate = false;
     swapchain::SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
     swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
@@ -136,8 +137,8 @@ swapchain::SwapChainSupportDetails device::querySwapChainSupport(VkPhysicalDevic
     }
     return details;
 }
-VkDevice device::getLogicalDevice(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices,
-                                  std::vector<const char *> deviceExtensions) {
+VkDevice
+device::getLogicalDevice(VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures deviceFeatures, queue::QueueFamilyIndices indices, std::vector<const char *> deviceExtensions) {
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
@@ -198,6 +199,7 @@ VkFormat device::findSupportedFormat(const std::vector<VkFormat> &candidates, Vk
 }
 
 VkFormat device::findDepthFormat() {
-    return findSupportedFormat({VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL,
-                               VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+    return findSupportedFormat(
+        {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
 }
