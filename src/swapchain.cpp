@@ -146,6 +146,10 @@ VkImageView swapchain::createImageView(VkImage image, VkFormat format, VkImageAs
     return imageView;
 }
 
+uint32_t swapchain::getSwapchainImageSize() {
+  return swapChainImages_.size();
+}  
+
 void swapchain::createImageViews() {
     swapChainImageViews_.resize(swapChainImages_.size());
 

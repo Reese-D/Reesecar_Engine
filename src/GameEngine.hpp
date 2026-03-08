@@ -127,7 +127,7 @@ public:
         createDescriptorSets();
         
         createCommandBuffers();
-        createSyncObjects();
+        createSyncObjects(); //needs to happen after swapchain creation
         
         mainLoop(glfwWindow_);
 
@@ -646,8 +646,9 @@ private:
     }
 
     void createSyncObjects() {
-        imageAvailableSemaphores_.resize(MAX_FRAMES_IN_FLIGHT);
-        renderFinishedSemaphores_.resize(MAX_FRAMES_IN_FLIGHT);
+
+      imageAvailableSemaphores_.resize(MAX_FRAMES_IN_FLIGHT);
+      renderFinishedSemaphores_.resize(pMySwapchain_->getSwapchainImageSize());
         inFlightFences_.resize(MAX_FRAMES_IN_FLIGHT);
     
         VkSemaphoreCreateInfo semaphoreInfo{};
@@ -659,20 +660,23 @@ private:
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             if (vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &imageAvailableSemaphores_[i]) != VK_SUCCESS ||
-                vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr, &renderFinishedSemaphores_[i]) != VK_SUCCESS ||
                 vkCreateFence(logicalDevice_, &fenceInfo, nullptr, &inFlightFences_[i]) != VK_SUCCESS) {
                 throw std::runtime_error("failed to create semaphores!");
             }
         }
+        for (size_t i = 0; i < renderFinishedSemaphores_.size(); i++) {
+          if(vkCreateSemaphore(logicalDevice_, &semaphoreInfo, nullptr,
+			       &renderFinishedSemaphores_[i]) != VK_SUCCESS) throw std::runtime_error("Failed to create render semaphores");
+        }
     }
-
+    
     void drawFrame()
     {
         vkWaitForFences(logicalDevice_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(logicalDevice_, swapchain_, UINT64_MAX, imageAvailableSemaphores_[currentFrame_], VK_NULL_HANDLE, &imageIndex);
-
+	
         if (result == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapChain();
             return;
@@ -701,7 +705,7 @@ private:
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &commandBuffers_[currentFrame_];
 
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores_[currentFrame_]};
+        VkSemaphore signalSemaphores[] = {renderFinishedSemaphores_[imageIndex]};
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -765,8 +769,7 @@ private:
     }
 
 
-    void cleanup(VkSurfaceKHR surface, VkInstance instance)
-    {
+    void cleanup(VkSurfaceKHR surface, VkInstance instance) {
         delete pMySwapchain_;
         vkDestroyImageView(logicalDevice_, depthImageView_, nullptr);
         vkDestroyImage(logicalDevice_, depthImage_, nullptr);
@@ -797,9 +800,11 @@ private:
         vkDestroyCommandPool(logicalDevice_, commandPool_, nullptr);
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             vkDestroySemaphore(logicalDevice_, imageAvailableSemaphores_[i], nullptr);
-            vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
             vkDestroyFence(logicalDevice_, inFlightFences_[i], nullptr);
         }
+        for (size_t i = 0; i < renderFinishedSemaphores_.size(); i++) {
+	  vkDestroySemaphore(logicalDevice_, renderFinishedSemaphores_[i], nullptr);
+	}          
         
         vkDestroyDescriptorPool(logicalDevice_, descriptorPool_, nullptr);
         vkDestroyDescriptorSetLayout(logicalDevice_, descriptorSetLayout_, nullptr);

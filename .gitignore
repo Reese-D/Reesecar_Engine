@@ -16,3 +16,4 @@ main
 test
 *.spv
 .cache
+compile_commands.json
