@@ -1,0 +1,14 @@
+#emacs_ignore
+*~
+\#*\#
+*\.el[c|d]
+.\#*
+
+# projectile files
+.projectile
+
+#included files
+external/vulkan-sdk/
+
+#compiled files
+main
