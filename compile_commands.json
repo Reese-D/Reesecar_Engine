@@ -1,0 +1,21 @@
+[
+  {
+    "file": "src/main.cpp",
+    "arguments": [
+      "clang++",
+      "src/main.cpp",
+      "-o",
+      "main",
+      "--std=c++26",
+      "-Iexternal",
+      "-Iexternal/KTX-Software/lib/include",
+      "-Iexternal/KTX-Software/external/dfdutils/",
+      "-Iexternal/tinyobjloader",
+      "-I/usr/local/include/",
+      "-I/usr/include/",
+      "-Iexternal/vulkan-sdk/include/"
+    ],
+    "directory": "/home/reese/git/Reesecar_Engine",
+    "output": "main"
+  }
+]
