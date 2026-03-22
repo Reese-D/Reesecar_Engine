@@ -6,6 +6,14 @@
 #include <memory>
 #include <vulkan/vulkan.h>
 
+
+
+static inline void temporaryDumbCheck(bool result, std::string &&message) {
+    if (!result) {
+	std::cerr << "Vulkan failed: " <<  message << std::endl;
+    }        
+}
+
 class gbSDLWrapper {
   public:
     gbSDLWrapper() { SDL_Init(SDL_INIT_VIDEO); };
@@ -41,7 +49,8 @@ class gbVkInstanceWrapper {
             .ppEnabledExtensionNames = instanceExtensions,
         };
 
-        vkCreateInstance(&instanceInfo, nullptr, &instance);
+	
+        temporaryDumbCheck(vkCreateInstance(&instanceInfo, nullptr, &instance), "Creating VK instance");
     }
 
     ~gbVkInstanceWrapper() { vkDestroyInstance(instance, nullptr); }
