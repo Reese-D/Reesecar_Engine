@@ -43,7 +43,16 @@ template <typename T, typename T1> static std::vector<T> EnumerateVulkan(void (*
 }
 
 class gbSDLWrapper {
+
+  private:
+    struct Instance_Extension {
+        uint32_t count;
+        char const *const *extensions;
+        Instance_Extension() : count(0), extensions(SDL_Vulkan_GetInstanceExtensions(&count)) {};                    
+    };
+    
   public:
+    
     gbSDLWrapper() {
         std::cout << "Setting up SDL" << std::endl;
         temporaryDumbCheck(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL with video");
@@ -54,6 +63,10 @@ class gbSDLWrapper {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         SDL_Quit();
     };
+
+    Instance_Extension getInstanceExtensions() {
+	return Instance_Extension{};
+    };     
 };
 
 // Wraps the VkInstance lifetime, keeps a shared pointer to the SDL lifetime to ensure it doesn't go out of scope before this does.
@@ -70,8 +83,8 @@ class gbVkInstanceWrapper {
         if (!SDL_WasInit(SDL_INIT_VIDEO)) {
             std::cerr << "Vulkan initialiazation failed. gbVkInstanceWrapper depends on SDL's SDL_INIT_VIDEO being enabled" << std::endl;
         }
-        uint32_t instanceExtensionsCount{0};
-        char const *const *instanceExtensions{SDL_Vulkan_GetInstanceExtensions(&instanceExtensionsCount)};
+
+	auto instance_extensions = sdl_ptr->getInstanceExtensions();
 
         VkInstanceCreateInfo instanceInfo{
             .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -80,8 +93,8 @@ class gbVkInstanceWrapper {
             .pApplicationInfo = &appInfo,
             .enabledLayerCount = 0,
             .ppEnabledLayerNames = nullptr,
-            .enabledExtensionCount = instanceExtensionsCount,
-            .ppEnabledExtensionNames = instanceExtensions,
+            .enabledExtensionCount = instance_extensions.count,
+            .ppEnabledExtensionNames = instance_extensions.extensions,
         };
 
         temporaryDumbCheck(vkCreateInstance(&instanceInfo, nullptr, &instance), "Creating VK instance");
