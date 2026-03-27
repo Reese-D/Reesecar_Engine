@@ -3,6 +3,7 @@
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
 #include <cstdint>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
+#include <glm/glm.hpp>
 
 #define PRAGMA_STR(x) _Pragma(#x)
 #define START_IGNORE_FIELD(fieldName)                                                                                                                                                   \
@@ -57,6 +59,21 @@ class gbSDLWrapper {
         Instance_Extension() : count(0), extensions(SDL_Vulkan_GetInstanceExtensions(&count)) {};
     };
 
+    //Theoretically you can have multiple windows for a single sdl instance, so it will keep track of its own SDL_DestroyWindow call instead of the sdl wrapper
+    struct Window_Wrapper {
+        SDL_Window *window;
+        VkSurfaceKHR surface;
+        glm::ivec2 windowSize;
+        Window_Wrapper(VkInstance &instance, std::string &&windowName, int width, int height, SDL_WindowFlags flags) {
+	    window = SDL_CreateWindow(windowName.c_str(), width, height, flags);
+	    temporaryDumbCheck(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface), "Creating vulkan surface");
+	    temporaryDumbCheck(SDL_GetWindowSize(window, &windowSize.x, &windowSize.y), "Getting window size");
+	}            
+        ~Window_Wrapper() {
+	    SDL_DestroyWindow(window);
+	}            
+    };
+
   public:
     gbSDLWrapper() {
         std::cout << "Setting up SDL" << std::endl;
@@ -72,6 +89,11 @@ class gbSDLWrapper {
     bool deviceSupportsPresentation(VkInstance &instance, VkPhysicalDevice &device, uint32_t queueFamily) { return SDL_Vulkan_GetPresentationSupport(instance, device, queueFamily); };
 
     Instance_Extension getInstanceExtensions() { return Instance_Extension{}; };
+
+    Window_Wrapper GetWindowAndExtensions(VkInstance &instance) {
+	Window_Wrapper result{instance, std::string("Gobline Horde!"), 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE};
+	return result;        
+    };
 };
 
 // Wraps the VkInstance lifetime, keeps a shared pointer to the SDL lifetime to ensure it doesn't go out of scope before this does.
@@ -211,4 +233,12 @@ int main(int argc, char *argv[]) {
     END_IGNORE_FIELD
     VmaAllocator allocator{VK_NULL_HANDLE};
     temporaryDumbCheck(vmaCreateAllocator(&vmaAllocatorCreateInfo, &allocator), "VMA couldn't allocate space for the create info and functions");
+
+    //----- Window and Surface -----
+    auto window_wrapper = sdl->GetWindowAndExtensions(instanceWrapper.instance);
+    VkSurfaceCapabilitiesKHR surfaceCaps{};
+    temporaryDumbCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, window_wrapper.surface, &surfaceCaps), "Getting physical device surface capabilities");
+
+    //----- Swapchain ------
+    
 }
