@@ -12,3 +12,4 @@ external/vulkan-sdk/
 
 #compiled files
 main
+compile_commands.json

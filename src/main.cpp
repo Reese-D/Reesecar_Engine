@@ -9,6 +9,14 @@
 #include <memory>
 #include <vector>
 #include <vulkan/vulkan.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
+
+#define PRAGMA_STR(x) _Pragma(#x)
+#define START_IGNORE_FIELD(fieldName)                                                                                                                                                   \
+    _Pragma("clang diagnostic push");                                                                                                                                                   \
+    PRAGMA_STR(clang diagnostic ignored fieldName);
+#define END_IGNORE_FIELD _Pragma("clang diagnostic pop")
 
 static inline void temporaryDumbCheck(bool result, std::string &&message) {
     if (!result) {
@@ -107,7 +115,7 @@ int main(int argc, char *argv[]) {
     auto sdl = std::make_shared<gbSDLWrapper>();
     // volkInitialize();
 
-    // ----- Acquire vulkan instance -----    
+    // ----- Acquire vulkan instance -----
     VkApplicationInfo appInfo{
         .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext = nullptr,
@@ -148,12 +156,10 @@ int main(int argc, char *argv[]) {
     temporaryDumbCheck(sdl->deviceSupportsPresentation(instanceWrapper.instance, physicalDevice, queueFamily), std::string("Physical device does not support presentation"));
 
     // ----- Setup logical device with desired extensions -----
-     
-// There are so many different fields in these structs it's just too verbose to keep this error here and makes it hard to tell which were enabled.
-// These structs won't change, vulkan just makes a new one in newer versions for backwards compatability.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wmissing-designated-field-initializers"
 
+    // There are so many different fields in these structs it's just too verbose to keep this error here and makes it hard to tell which were enabled.
+    // These structs won't change, vulkan just makes a new one in newer versions for backwards compatability.
+    START_IGNORE_FIELD("-Wmissing-designated-field-initializers")
     const std::vector<const char *> deviceExtensions{VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     VkPhysicalDeviceVulkan12Features enabledVk12Features{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
@@ -170,7 +176,7 @@ int main(int argc, char *argv[]) {
         .dynamicRendering = true,
     };
     const VkPhysicalDeviceFeatures enabledVk10Features{.samplerAnisotropy = VK_TRUE};
-#pragma clang diagnostic pop
+    END_IGNORE_FIELD
 
     VkDeviceCreateInfo deviceCreateInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -188,9 +194,21 @@ int main(int argc, char *argv[]) {
     temporaryDumbCheck(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device), "Unable to create logical device");
 
     //----- Get logical device queue -----
-    VkQueue queue{VK_NULL_HANDLE};        
-    vkGetDeviceQueue(device, queueFamily, 0, &queue); //0 is queue index
+    VkQueue queue{VK_NULL_HANDLE};
+    vkGetDeviceQueue(device, queueFamily, 0, &queue); // 0 is queue index
     return 0;
 
     //----- VMA -----
+    START_IGNORE_FIELD("-Wmissing-designated-field-initializers")
+    VmaVulkanFunctions vmaVkFunctions{.vkGetInstanceProcAddr = vkGetInstanceProcAddr, .vkGetDeviceProcAddr = vkGetDeviceProcAddr, .vkCreateImage = vkCreateImage};
+    VmaAllocatorCreateInfo vmaAllocatorCreateInfo{
+        .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+        .physicalDevice = physicalDevice,
+        .device = device,
+        .pVulkanFunctions = &vmaVkFunctions,
+        .instance = instanceWrapper.instance
+    };
+    END_IGNORE_FIELD
+    VmaAllocator allocator{VK_NULL_HANDLE};
+    temporaryDumbCheck(vmaCreateAllocator(&vmaAllocatorCreateInfo, &allocator), "VMA couldn't allocate space for the create info and functions");
 }
