@@ -11,8 +11,8 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
-#include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
+#include <vk_mem_alloc.h>
 
 #define PRAGMA_STR(x) _Pragma(#x)
 #define START_IGNORE_FIELD(fieldName)                                                                                                                                                   \
@@ -32,21 +32,23 @@ static inline void temporaryDumbCheck(VkResult result, std::string &&message) {
     }
 }
 
-template <typename T, typename T1> static std::vector<T> EnumerateVulkan(VkResult (*func)(T1, uint32_t *, T *), T1 instance, std::string errorMessage) {
+template <typename T, typename... T1> static std::vector<T> EnumerateVulkan(std::string errorMessage, VkResult (*func)(T1..., uint32_t *, T *), T1... instance) {
     uint32_t itemCount{0};
-    temporaryDumbCheck(func(instance, &itemCount, nullptr), errorMessage + std::string(" (when getting count)"));
+    temporaryDumbCheck(func(instance..., &itemCount, nullptr), errorMessage + std::string(" (when getting count)"));
     std::vector<T> results{itemCount};
-    temporaryDumbCheck(func(instance, &itemCount - 1, results.data()), errorMessage + std::string(" (when getting results)"));
+    temporaryDumbCheck(func(instance..., &itemCount - 1, results.data()), errorMessage + std::string(" (when getting results)"));
     return results;
 }
 
-template <typename T, typename T1> static std::vector<T> EnumerateVulkan(VkResult (*func)(T1, uint32_t *, T *), T1 instance) { return EnumerateVulkan<T, T1>(func, instance, ""); }
+template <typename T, typename... T1> static std::vector<T> EnumerateVulkan(VkResult (*func)(T1..., uint32_t *, T *), T1... instance) {
+    return EnumerateVulkan<T, T1...>("", func, instance...);
+}
 
-template <typename T, typename T1> static std::vector<T> EnumerateVulkan(void (*func)(T1, uint32_t *, T *), T1 instance) {
+template <typename T, typename... T1> static std::vector<T> EnumerateVulkan(void (*func)(T1..., uint32_t *, T *), T1... instance) {
     uint32_t itemCount{0};
-    func(instance, &itemCount, nullptr);
+    func(instance..., &itemCount, nullptr);
     std::vector<T> results{itemCount};
-    func(instance, &itemCount, results.data());
+    func(instance..., &itemCount, results.data());
     return results;
 }
 
@@ -59,19 +61,17 @@ class gbSDLWrapper {
         Instance_Extension() : count(0), extensions(SDL_Vulkan_GetInstanceExtensions(&count)) {};
     };
 
-    //Theoretically you can have multiple windows for a single sdl instance, so it will keep track of its own SDL_DestroyWindow call instead of the sdl wrapper
+    // Theoretically you can have multiple windows for a single sdl instance, so it will keep track of its own SDL_DestroyWindow call instead of the sdl wrapper
     struct Window_Wrapper {
         SDL_Window *window;
         VkSurfaceKHR surface;
         glm::ivec2 windowSize;
         Window_Wrapper(VkInstance &instance, std::string &&windowName, int width, int height, SDL_WindowFlags flags) {
-	    window = SDL_CreateWindow(windowName.c_str(), width, height, flags);
-	    temporaryDumbCheck(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface), "Creating vulkan surface");
-	    temporaryDumbCheck(SDL_GetWindowSize(window, &windowSize.x, &windowSize.y), "Getting window size");
-	}            
-        ~Window_Wrapper() {
-	    SDL_DestroyWindow(window);
-	}            
+            window = SDL_CreateWindow(windowName.c_str(), width, height, flags);
+            temporaryDumbCheck(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface), "Creating vulkan surface");
+            temporaryDumbCheck(SDL_GetWindowSize(window, &windowSize.x, &windowSize.y), "Getting window size");
+        }
+        ~Window_Wrapper() { SDL_DestroyWindow(window); }
     };
 
   public:
@@ -91,8 +91,8 @@ class gbSDLWrapper {
     Instance_Extension getInstanceExtensions() { return Instance_Extension{}; };
 
     Window_Wrapper GetWindowAndExtensions(VkInstance &instance) {
-	Window_Wrapper result{instance, std::string("Gobline Horde!"), 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE};
-	return result;        
+        Window_Wrapper result{instance, std::string("Gobline Horde!"), 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE};
+        return result;
     };
 };
 
@@ -150,14 +150,14 @@ int main(int argc, char *argv[]) {
     gbVkInstanceWrapper instanceWrapper{std::move(appInfo), sdl};
 
     // ----- Get physical device & its properties -----
-    std::vector<VkPhysicalDevice> devices = EnumerateVulkan<VkPhysicalDevice>(vkEnumeratePhysicalDevices, instanceWrapper.instance, std::string("Failed creating physical device"));
+    std::vector<VkPhysicalDevice> devices = EnumerateVulkan<VkPhysicalDevice>(std::string("Failed creating physical device"), vkEnumeratePhysicalDevices, instanceWrapper.instance);
     VkPhysicalDeviceProperties2 deviceProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = nullptr, .properties = {}};
     auto physicalDevice = devices[0];
     vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties);
     std::cout << "Chosen device: " << deviceProperties.properties.deviceName << "\n";
 
     // ----- Setup Queue Families -----
-    auto queueFamilies = EnumerateVulkan(vkGetPhysicalDeviceQueueFamilyProperties2, physicalDevice);
+    auto queueFamilies = EnumerateVulkan<VkQueueFamilyProperties2>(vkGetPhysicalDeviceQueueFamilyProperties2, physicalDevice);
     uint32_t queueFamily{0};
     for (size_t i = 0; i < queueFamilies.size(); i++) {
         if (queueFamilies[i].queueFamilyProperties.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -236,9 +236,44 @@ int main(int argc, char *argv[]) {
 
     //----- Window and Surface -----
     auto window_wrapper = sdl->GetWindowAndExtensions(instanceWrapper.instance);
-    VkSurfaceCapabilitiesKHR surfaceCaps{};
-    temporaryDumbCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, window_wrapper.surface, &surfaceCaps), "Getting physical device surface capabilities");
+    VkSurfaceCapabilitiesKHR surfaceCapabilities{};
+    temporaryDumbCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, window_wrapper.surface, &surfaceCapabilities), "Getting physical device surface capabilities");
 
     //----- Swapchain ------
-    
+    const VkFormat imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
+    START_IGNORE_FIELD("-Wmissing-designated-field-initializers")
+    VkSwapchainCreateInfoKHR swapchainCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .surface = window_wrapper.surface,
+        .minImageCount = surfaceCapabilities.minImageCount,
+        .imageFormat = imageFormat,
+        .imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR, // Guaranteed to be available with VK_FORMAT_B8G8R8A8_SRGB on all systems
+        .imageExtent{.width = surfaceCapabilities.currentExtent.width, .height = surfaceCapabilities.currentExtent.height},
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = VK_PRESENT_MODE_FIFO_KHR
+    };
+    END_IGNORE_FIELD
+    VkSwapchainKHR swapchain{VK_NULL_HANDLE};
+    temporaryDumbCheck(vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain), "Create Swapchain");
+
+    auto swapchainImages = EnumerateVulkan<VkImage>("Get swapchain images", vkGetSwapchainImagesKHR, device, swapchain);
+    std::vector<VkImageView> swapchainImageViews;
+    swapchainImageViews.resize(swapchainImages.size());
+    for (size_t i = 0; i < swapchainImageViews.size(); i++) {
+        VkImageViewCreateInfo viewCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .image = swapchainImages[i],
+            .viewType = VK_IMAGE_VIEW_TYPE_2D,
+            .format = imageFormat,
+            .components = {},
+            .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}
+        };
+        temporaryDumbCheck(vkCreateImageView(device, &viewCreateInfo, nullptr, &swapchainImageViews[i]), "Create image view");
+    }
 }
