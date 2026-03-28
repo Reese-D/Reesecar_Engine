@@ -64,11 +64,12 @@ class gbSDLWrapper {
     // Theoretically you can have multiple windows for a single sdl instance, so it will keep track of its own SDL_DestroyWindow call instead of the sdl wrapper
     struct Window_Wrapper {
         SDL_Window *window;
-        VkSurfaceKHR surface;
+        std::shared_ptr<VkSurfaceKHR> surface;
         glm::ivec2 windowSize;
-        Window_Wrapper(VkInstance &instance, std::string &&windowName, int width, int height, SDL_WindowFlags flags) {
+        Window_Wrapper(std::shared_ptr<VkInstance> instance, std::string &&windowName, int width, int height, SDL_WindowFlags flags)
+            : surface(new VkSurfaceKHR{VK_NULL_HANDLE}, [instance](VkSurfaceKHR *ptr) { vkDestroySurfaceKHR(*instance, *ptr, nullptr); }) {
             window = SDL_CreateWindow(windowName.c_str(), width, height, flags);
-            temporaryDumbCheck(SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface), "Creating vulkan surface");
+            temporaryDumbCheck(SDL_Vulkan_CreateSurface(window, *instance, nullptr, surface.get()), "Creating vulkan surface");
             temporaryDumbCheck(SDL_GetWindowSize(window, &windowSize.x, &windowSize.y), "Getting window size");
         }
         ~Window_Wrapper() { SDL_DestroyWindow(window); }
@@ -90,7 +91,7 @@ class gbSDLWrapper {
 
     Instance_Extension getInstanceExtensions() { return Instance_Extension{}; };
 
-    Window_Wrapper GetWindowAndExtensions(VkInstance &instance) {
+    Window_Wrapper GetWindowAndExtensions(std::shared_ptr<VkInstance> instance) {
         Window_Wrapper result{instance, std::string("Gobline Horde!"), 1280u, 720u, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE};
         return result;
     };
@@ -99,13 +100,21 @@ class gbSDLWrapper {
 // Wraps the VkInstance lifetime, keeps a shared pointer to the SDL lifetime to ensure it doesn't go out of scope before this does.
 class gbVkInstanceWrapper {
   public:
-    VkInstance instance{VK_NULL_HANDLE};
+    std::shared_ptr<VkInstance> instance{VK_NULL_HANDLE};
     std::shared_ptr<gbSDLWrapper> sdl_ptr;
     gbVkInstanceWrapper() = delete;
     gbVkInstanceWrapper(gbVkInstanceWrapper &other) = delete;
     gbVkInstanceWrapper(gbVkInstanceWrapper &&other) = delete;
 
-    gbVkInstanceWrapper(VkApplicationInfo appInfo, std::shared_ptr<gbSDLWrapper> sdl) : sdl_ptr(sdl) {
+    gbVkInstanceWrapper(VkApplicationInfo appInfo, std::shared_ptr<gbSDLWrapper> sdl)
+        : instance(
+              new VkInstance{VK_NULL_HANDLE},
+              [](VkInstance *ptr) {
+                  std::cout << "Destroying vulkan instance" << std::endl;
+                  vkDestroyInstance(*ptr, nullptr);
+              }
+          ),
+          sdl_ptr(sdl) {
         if (!SDL_WasInit(SDL_INIT_VIDEO)) {
             std::cerr << "Vulkan initialiazation failed. gbVkInstanceWrapper depends on SDL's SDL_INIT_VIDEO being enabled" << std::endl;
         }
@@ -123,10 +132,10 @@ class gbVkInstanceWrapper {
             .ppEnabledExtensionNames = instance_extensions.extensions,
         };
 
-        temporaryDumbCheck(vkCreateInstance(&instanceInfo, nullptr, &instance), "Creating VK instance");
+        temporaryDumbCheck(vkCreateInstance(&instanceInfo, nullptr, instance.get()), "Creating VK instance");
     }
 
-    ~gbVkInstanceWrapper() { vkDestroyInstance(instance, nullptr); }
+    ~gbVkInstanceWrapper() = default;
 };
 
 int main(int argc, char *argv[]) {
@@ -150,7 +159,7 @@ int main(int argc, char *argv[]) {
     gbVkInstanceWrapper instanceWrapper{std::move(appInfo), sdl};
 
     // ----- Get physical device & its properties -----
-    std::vector<VkPhysicalDevice> devices = EnumerateVulkan<VkPhysicalDevice>(std::string("Failed creating physical device"), vkEnumeratePhysicalDevices, instanceWrapper.instance);
+    std::vector<VkPhysicalDevice> devices = EnumerateVulkan<VkPhysicalDevice>(std::string("Failed creating physical device"), vkEnumeratePhysicalDevices, *instanceWrapper.instance);
     VkPhysicalDeviceProperties2 deviceProperties{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = nullptr, .properties = {}};
     auto physicalDevice = devices[0];
     vkGetPhysicalDeviceProperties2(physicalDevice, &deviceProperties);
@@ -175,7 +184,7 @@ int main(int argc, char *argv[]) {
         .pQueuePriorities = &queuePriorities
     };
 
-    temporaryDumbCheck(sdl->deviceSupportsPresentation(instanceWrapper.instance, physicalDevice, queueFamily), std::string("Physical device does not support presentation"));
+    temporaryDumbCheck(sdl->deviceSupportsPresentation(*instanceWrapper.instance, physicalDevice, queueFamily), std::string("Physical device does not support presentation"));
 
     // ----- Setup logical device with desired extensions -----
 
@@ -212,13 +221,16 @@ int main(int argc, char *argv[]) {
         .ppEnabledExtensionNames = deviceExtensions.data(),
         .pEnabledFeatures = &enabledVk10Features
     };
-    VkDevice device{VK_NULL_HANDLE};
-    temporaryDumbCheck(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device), "Unable to create logical device");
+
+    std::shared_ptr<VkDevice> device{new VkDevice{VK_NULL_HANDLE}, [](VkDevice *ptr) {
+                                         std::cout << "Destroying vulkan device" << std::endl;
+                                         vkDestroyDevice(*ptr, nullptr);
+                                     }};
+    temporaryDumbCheck(vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, device.get()), "Unable to create logical device");
 
     //----- Get logical device queue -----
     VkQueue queue{VK_NULL_HANDLE};
-    vkGetDeviceQueue(device, queueFamily, 0, &queue); // 0 is queue index
-    return 0;
+    vkGetDeviceQueue(*device, queueFamily, 0, &queue); // 0 is queue index
 
     //----- VMA -----
     START_IGNORE_FIELD("-Wmissing-designated-field-initializers")
@@ -226,9 +238,9 @@ int main(int argc, char *argv[]) {
     VmaAllocatorCreateInfo vmaAllocatorCreateInfo{
         .flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
         .physicalDevice = physicalDevice,
-        .device = device,
+        .device = *device,
         .pVulkanFunctions = &vmaVkFunctions,
-        .instance = instanceWrapper.instance
+        .instance = *instanceWrapper.instance
     };
     END_IGNORE_FIELD
     VmaAllocator allocator{VK_NULL_HANDLE};
@@ -237,7 +249,7 @@ int main(int argc, char *argv[]) {
     //----- Window and Surface -----
     auto window_wrapper = sdl->GetWindowAndExtensions(instanceWrapper.instance);
     VkSurfaceCapabilitiesKHR surfaceCapabilities{};
-    temporaryDumbCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, window_wrapper.surface, &surfaceCapabilities), "Getting physical device surface capabilities");
+    temporaryDumbCheck(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, *window_wrapper.surface, &surfaceCapabilities), "Getting physical device surface capabilities");
 
     //----- Swapchain ------
     const VkFormat imageFormat{VK_FORMAT_B8G8R8A8_SRGB};
@@ -245,7 +257,7 @@ int main(int argc, char *argv[]) {
     VkSwapchainCreateInfoKHR swapchainCreateInfo{
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .pNext = nullptr,
-        .surface = window_wrapper.surface,
+        .surface = *window_wrapper.surface,
         .minImageCount = surfaceCapabilities.minImageCount,
         .imageFormat = imageFormat,
         .imageColorSpace = VK_COLORSPACE_SRGB_NONLINEAR_KHR, // Guaranteed to be available with VK_FORMAT_B8G8R8A8_SRGB on all systems
@@ -257,13 +269,22 @@ int main(int argc, char *argv[]) {
         .presentMode = VK_PRESENT_MODE_FIFO_KHR
     };
     END_IGNORE_FIELD
-    VkSwapchainKHR swapchain{VK_NULL_HANDLE};
-    temporaryDumbCheck(vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain), "Create Swapchain");
 
-    auto swapchainImages = EnumerateVulkan<VkImage>("Get swapchain images", vkGetSwapchainImagesKHR, device, swapchain);
-    std::vector<VkImageView> swapchainImageViews;
-    swapchainImageViews.resize(swapchainImages.size());
-    for (size_t i = 0; i < swapchainImageViews.size(); i++) {
+    std::shared_ptr<VkSwapchainKHR> swapchain{new VkSwapchainKHR{VK_NULL_HANDLE}, [device](VkSwapchainKHR *ptr) {
+                                                  std::cout << "Destroying vulkan swapchainKHR" << std::endl;
+                                                  vkDeviceWaitIdle(*device);
+                                                  vkDestroySwapchainKHR(*device, *ptr, nullptr);
+                                              }};
+    temporaryDumbCheck(vkCreateSwapchainKHR(*device, &swapchainCreateInfo, nullptr, swapchain.get()), "Create Swapchain");
+
+    auto swapchainImages = EnumerateVulkan<VkImage>("Get swapchain images", vkGetSwapchainImagesKHR, *device, *swapchain);
+    std::vector<std::shared_ptr<VkImageView>> swapchainImageViews = {};
+    for (size_t i = 0; i < swapchainImages.size(); i++) {
+        swapchainImageViews.emplace_back(std::shared_ptr<VkImageView>{new VkImageView{VK_NULL_HANDLE}, [device](VkImageView *ptr) {
+                                                                          std::cout << "Destroying Image view" << std::endl;
+                                                                          vkDestroyImageView(*device, *ptr, nullptr);
+                                                                      }});
+        auto currentImageView = swapchainImageViews.back();
         VkImageViewCreateInfo viewCreateInfo{
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .pNext = nullptr,
@@ -274,6 +295,10 @@ int main(int argc, char *argv[]) {
             .components = {},
             .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}
         };
-        temporaryDumbCheck(vkCreateImageView(device, &viewCreateInfo, nullptr, &swapchainImageViews[i]), "Create image view");
+        temporaryDumbCheck(vkCreateImageView(*device, &viewCreateInfo, nullptr, currentImageView.get()), "Create image view");
     }
+
+    //----- Program exit -----
+    std::cout << "Program finished, Terminating..." << std::endl;
+    return 0;
 }
