@@ -243,8 +243,8 @@ int main(int argc, char *argv[]) {
         .instance = *instanceWrapper.instance
     };
     END_IGNORE_FIELD
-    VmaAllocator allocator{VK_NULL_HANDLE};
-    temporaryDumbCheck(vmaCreateAllocator(&vmaAllocatorCreateInfo, &allocator), "VMA couldn't allocate space for the create info and functions");
+    std::shared_ptr<VmaAllocator> allocator{new VmaAllocator{VK_NULL_HANDLE}, [](VmaAllocator *ptr) { vmaDestroyAllocator(*ptr); }};
+    temporaryDumbCheck(vmaCreateAllocator(&vmaAllocatorCreateInfo, allocator.get()), "VMA couldn't allocate space for the create info and functions");
 
     //----- Window and Surface -----
     auto window_wrapper = sdl->GetWindowAndExtensions(instanceWrapper.instance);
@@ -297,6 +297,69 @@ int main(int argc, char *argv[]) {
         };
         temporaryDumbCheck(vkCreateImageView(*device, &viewCreateInfo, nullptr, currentImageView.get()), "Create image view");
     }
+
+    //----- Depth Attachment -----
+    std::vector<VkFormat> depthFormatList{VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+    VkFormat depthFormat{VK_FORMAT_UNDEFINED};
+    for (VkFormat &format : depthFormatList) {
+        VkFormatProperties2 formatProperties{.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = nullptr, .formatProperties = {}};
+        vkGetPhysicalDeviceFormatProperties2(physicalDevice, format, &formatProperties);
+        if (formatProperties.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            depthFormat = format;
+            break;
+        }
+    }
+    temporaryDumbCheck(depthFormat != VK_FORMAT_UNDEFINED, "Depth format undefined");
+    VkImageCreateInfo depthImageCreateInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = depthFormat,
+        .extent{.width = static_cast<uint32_t>(window_wrapper.windowSize.x), .height = static_cast<uint32_t>(window_wrapper.windowSize.y), .depth = 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        .sharingMode = {},
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    VmaAllocationCreateInfo allocCreateInfo{
+        .flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT,
+        .usage = VMA_MEMORY_USAGE_AUTO,
+        .requiredFlags = 0,  // flags that must be set for chosen allocation. AFAIK there aren't any for this setup?
+        .preferredFlags = 0, // 0 if no additional flags are preferred
+        .memoryTypeBits = 0, // a mask, 0 means any memory type is acceptable
+        .pool = VK_NULL_HANDLE,
+        .pUserData = nullptr, // must be nullptr if VMA_ALLOCATION_CREATE_USER_DATA_COPY_STRING_BIT is used, we're just not using it though so nullptr
+        .priority = 0,        // Ignored if VMA_ALLOCATOR_CREATE_EXT_MEMORY_PRIORITY_BIT was not set, so we just use 0
+        .minAlignment = 0     // default
+    };
+
+    auto depthImageAllocation = std::make_shared<VmaAllocation>();
+    std::shared_ptr<VkImage> depthImage{new VkImage{VK_NULL_HANDLE}, [depthImageAllocation, allocator](VkImage *ptr) {
+                                            std::cout << "Destroying depth image" << std::endl;
+                                            vmaDestroyImage(*allocator, *ptr, *depthImageAllocation);
+                                        }};
+    temporaryDumbCheck(vmaCreateImage(*allocator, &depthImageCreateInfo, &allocCreateInfo, depthImage.get(), depthImageAllocation.get(), nullptr), "VMA create image");
+    VkImageViewCreateInfo depthViewCI{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = *depthImage,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = depthFormat,
+        .components = {},
+        .subresourceRange{.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1}
+    };
+    std::shared_ptr<VkImageView> depthImageView{new VkImageView{VK_NULL_HANDLE}, [device](VkImageView *ptr) {
+                                                    std::cout << "Destroying depth image view" << std::endl;
+                                                    vkDestroyImageView(*device, *ptr, nullptr);
+                                                }};
+    temporaryDumbCheck(vkCreateImageView(*device, &depthViewCI, nullptr, depthImageView.get()), "Create image view");
 
     //----- Program exit -----
     std::cout << "Program finished, Terminating..." << std::endl;
